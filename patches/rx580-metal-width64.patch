@@ -433,6 +433,19 @@ index 451f652..889ab35 100644
  
              if (res->buffers[res->n_buffers].metal == nil) {
                  GGML_LOG_ERROR("%s: error: failed to allocate buffer, size = %8.2f MiB\n", __func__, size_aligned / 1024.0 / 1024.0);
+diff --git a/ggml/src/ggml-metal/ggml-metal-impl.h b/ggml/src/ggml-metal/ggml-metal-impl.h
+index 6e56608..0a68381 100644
+--- a/ggml/src/ggml-metal/ggml-metal-impl.h
++++ b/ggml/src/ggml-metal/ggml-metal-impl.h
+@@ -57,7 +57,7 @@
+ #define N_R0_Q4_K 2
+ #define N_SG_Q4_K 2
+ 
+-#define N_R0_Q5_K 1
++#define N_R0_Q5_K 2
+ #define N_SG_Q5_K 2
+ 
+ #define N_R0_Q6_K 2
 diff --git a/ggml/src/ggml-metal/ggml-metal-ops.cpp b/ggml/src/ggml-metal/ggml-metal-ops.cpp
 index 14712c3..5c0421d 100644
 --- a/ggml/src/ggml-metal/ggml-metal-ops.cpp
@@ -526,6 +539,26 @@ index 14712c3..5c0421d 100644
  
      const size_t smem = pipeline.smem;
  
+diff --git a/ggml/src/ggml-metal/ggml-metal.cpp b/ggml/src/ggml-metal/ggml-metal.cpp
+index d0771eb..0752551 100644
+--- a/ggml/src/ggml-metal/ggml-metal.cpp
++++ b/ggml/src/ggml-metal/ggml-metal.cpp
+@@ -701,10 +701,14 @@ static void ggml_backend_metal_device_get_props(ggml_backend_dev_t dev, ggml_bac
+ 
+     ggml_backend_metal_device_get_memory(dev, &props->memory_free, &props->memory_total);
+ 
++    const ggml_metal_device_t ctx_dev = (ggml_metal_device_t) dev->context;
++
+     props->caps = {
+         /* .async                = */ true,
+         /* .host_buffer          = */ false,
+-        /* .buffer_from_host_ptr = */ true,
++        // mapping a file keeps the weights in host memory; when private buffers
++        // are in use the loader must copy instead, so do not advertise it
++        /* .buffer_from_host_ptr = */ ggml_metal_device_get_props(ctx_dev)->use_shared_buffers,
+         /* .events               = */ true,
+         /* .mmap_support         = */ true,
+     };
 diff --git a/ggml/src/ggml-metal/kernels/common.h b/ggml/src/ggml-metal/kernels/common.h
 index c4d6743..843c899 100644
 --- a/ggml/src/ggml-metal/kernels/common.h

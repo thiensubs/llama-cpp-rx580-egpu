@@ -96,6 +96,24 @@ Conclusion: the prompt cache is durable across idle; the slow case is the first
 call after a (re)start, not idleness. Weights load once per start — one
 `METAL bigbuf` line served 526 generations with flat RSS.
 
+## Threadgroup shape for q5_K (Finding 6)
+
+`llama-bench tg64`, `-ngl 999 -t 1`, three repetitions, one rebuild per row
+(`N_R0_Q5_K` / `N_SG_Q5_K` in `ggml-metal-impl.h`):
+
+| rows/simdgroup | simdgroups | tg64 |
+|---|---|---|
+| 1 (default) | 2 | 25.46 ± 0.07 |
+| 1 | 4 | 24.70 ± 0.42 |
+| 1 | 8 | — (build ok, not run) |
+| 2 | 1 | 28.19 ± 0.31 |
+| 2 | 2 | 28.12 ± 0.33 |
+| 2 | 4 | 27.75 ± 0.34 |
+| 2 | 8 | 25.82 ± 0.02 |
+
+End to end through `llama-server` with sampling on, same prompt at temperature 0:
+24.45 t/s before, 26.6-26.8 t/s after.
+
 ## Energy
 
 A local usage log of 5-minute buckets pairing tokens with the wattage

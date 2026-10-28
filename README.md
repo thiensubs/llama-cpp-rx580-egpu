@@ -57,6 +57,20 @@ Decode with the graph on the GPU: **1203 ms/token shared vs 51.5 ms private.**
 
 Fix: stop forcing it. `GGML_METAL_SHARED_BUFFERS_ENABLE` still lets users opt in.
 
+**The flip alone is not enough, and I found that the hard way.** The Metal device
+also advertised `caps.buffer_from_host_ptr = true`, so the model loader kept
+mapping the file into host memory and then asserted
+`ggml_metal_buffer_is_shared` (`ggml-metal.cpp:42`) — every tool that uses mmap,
+including `llama-bench` and a default `llama-cli`, aborted at load. The
+capability has to follow the same flag:
+
+```c
+/* .buffer_from_host_ptr = */ ggml_metal_device_get_props(ctx_dev)->use_shared_buffers,
+```
+
+With private buffers, mapping a file is not possible, so the loader copies
+instead — which is exactly what `-lm none` was forcing by hand.
+
 ## Finding 2 — simdgroup width 32 is hardcoded; AMD is 64
 
 ```c
@@ -133,6 +147,24 @@ is_shared=0`, and the GPU stops reading weights across the bus.
 Do **not** "fix" `ggml_metal_buffer_map()` to allocate private buffers: the
 loader calls `ggml_backend_buffer_get_base` on mapped buffers and asserts
 `is_shared` (`ggml-metal.cpp:42`). Verified abort.
+
+## Finding 6 — the q5_K threadgroup shape is tuned for another GPU
+
+`N_R0_Q5_K` (rows handled per simdgroup) and `N_SG_Q5_K` (simdgroups per
+threadgroup) default to 1 and 2. Swept on the RX 580 with `llama-bench tg64`
+(`-ngl 999 -t 1`), each build remeasured:
+
+| rows/simdgroup | simdgroups | threads/tg | tg64 |
+|---|---|---|---|
+| 1 (default) | 2 | 128 | 25.46 ± 0.07 |
+| 1 | 4 | 256 | 24.70 ± 0.42 |
+| 2 | 2 | 128 | 28.12 ± 0.33 |
+| 2 | 1 | 64 | 28.19 ± 0.31 |
+| 2 | 4 | 256 | 27.75 ± 0.34 |
+| 2 | 8 | 512 | 25.82 ± 0.02 |
+
+One constant changes, `N_R0_Q5_K 1 -> 2`: **+10%** (25.46 → 28.12). Through the
+server, with sampling, 24.45 → 26.7 t/s. Output text unchanged at temperature 0.
 
 ## Recipes
 

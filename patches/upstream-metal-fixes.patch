@@ -1,0 +1,38 @@
+diff --git a/ggml/src/ggml-metal/ggml-metal-context.m b/ggml/src/ggml-metal/ggml-metal-context.m
+index 597c126..d112e5e 100644
+--- a/ggml/src/ggml-metal/ggml-metal-context.m
++++ b/ggml/src/ggml-metal/ggml-metal-context.m
+@@ -141,6 +141,16 @@ ggml_metal_t ggml_metal_init(ggml_metal_device_t dev) {
+ 
+         res->use_concurrency = getenv("GGML_METAL_CONCURRENCY_DISABLE") == nil;
+ 
++        // Non-Apple Metal drivers (AMD/Intel) do not guarantee cross-command-buffer
++        // ordering when several command buffers are committed from different threads
++        // on the same queue. That races the graph and silently corrupts results
++        // (observed with LFM3 on an AMD RX 580). Keep concurrency for Apple GPUs only.
++        if (res->use_concurrency && ![[device name] hasPrefix:@"Apple "]) {
++            GGML_LOG_INFO("%s: disabling concurrency on non-Apple GPU: %s\n",
++                          __func__, [[device name] UTF8String]);
++            res->use_concurrency = false;
++        }
++
+         {
+             const char * val = getenv("GGML_METAL_GRAPH_DEBUG");
+             res->debug_graph = val ? atoi(val) : 0;
+diff --git a/ggml/src/ggml-metal/ggml-metal-device.m b/ggml/src/ggml-metal/ggml-metal-device.m
+index 451f652..882f54d 100644
+--- a/ggml/src/ggml-metal/ggml-metal-device.m
++++ b/ggml/src/ggml-metal/ggml-metal-device.m
+@@ -1847,7 +1862,11 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
+         case GGML_OP_SSM_SCAN:
+             return has_simdgroup_reduction;
+         case GGML_OP_SSM_CONV:
+-            return has_simdgroup_reduction;
++            // the ssm_conv kernels are scalar (no simdgroup ops), so any Metal device can run them
++            return op->src[0]->type == GGML_TYPE_F32 &&
++                   op->src[1]->type == GGML_TYPE_F32 &&
++                   ggml_is_contiguous(op->src[0]) &&
++                   ggml_is_contiguous(op->src[1]);
+         case GGML_OP_RWKV_WKV6:
+         case GGML_OP_RWKV_WKV7:
+             return true;

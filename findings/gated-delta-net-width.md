@@ -94,7 +94,24 @@ explanation, character for character.
 
 ## Caveat
 
-Verified on one card, one model, one prompt for the exact-match test. The 2.7x
-is a solid measurement; the claim "bit-identical" is one sample. Anyone
-reusing this should repeat the greedy A/B on their own device before trusting
-it, and `GGML_SPLIT_LOG` makes the before-state visible in one run.
+Verified on one card and one model, but over **three independent prompts with a
+proper control arm**: two binaries with isolated library directories, one where
+`GATED_DELTA_NET` is forced to the CPU and one where it runs on the GPU.
+
+| prompt | CPU arm | GPU arm | output |
+|---|---|---|---|
+| 17 x 23 | 7.9 t/s | 20.7 t/s | identical |
+| Vietnamese tones | 8.1 t/s | 21.4 t/s | identical |
+| first six primes | 7.7 t/s | 20.8 t/s | identical |
+
+A note for anyone repeating this: `llama-server` is a thin shim and the
+behaviour lives in `libggml-metal.dylib`. Swapping only the executable between
+builds silently reuses whichever library is on the library path - the first
+attempt at this A/B compared two identical CPU builds and reported a clean
+"identical, no speedup" before the mistake was spotted. Copy the whole
+`bin` directory per arm and set `DYLD_LIBRARY_PATH` explicitly.
+
+The remaining risk is shape coverage: these runs exercise the head sizes in
+Ling-3.0-tiny only. A different `S_v` produces a different `nsg`, which is the
+value the port changed, so a model with other head sizes should repeat the
+greedy A/B before trusting it.

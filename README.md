@@ -5,6 +5,22 @@ specific and reproducible: an AMD card is never selected by Apple-family
 checks, ends up reading its weights over Thunderbolt, and produces silent
 garbage for one architecture before any of that.
 
+## ⚡ TL;DR — the smaller model is slower
+
+| weights | file | generation | card utilisation |
+|---|---|---|---|
+| **f16** | 3.22 GiB | **36.8 t/s** 🏆 | 125 GB/s |
+| Q5_K_M | 1.16 GiB | 28.2 t/s | 35.5 GB/s |
+| Q4_0 | 0.98 GiB | 4.3 t/s 🐌 | CPU fallback |
+| Q8_0 | 1.71 GiB | 3.4 t/s 🐌 | CPU fallback |
+
+The card streams at 217 GB/s. Q5_K needs 5.8 ms of reads and spends 29.7 ms
+unpacking 5.5-bit blocks; f16 needs 16.0 ms of reads and 11.1 ms on everything
+else. Compression trades bandwidth for integer work, and this GPU sits on the
+wrong side of that trade — so it is also the *less accurate* choice, not just
+the slower one. Details in
+[Finding 7](#finding-7--quantisation-is-slower-than-f16-on-this-card).
+
 **Status: research notes, not an upstream-ready change.** The patch contains
 temporary instrumentation and disables flash attention on this device. Read the
 "not done" section before using anything here.

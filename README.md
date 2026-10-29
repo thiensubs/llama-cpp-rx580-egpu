@@ -183,8 +183,21 @@ GGML_METAL_DEVICE_NAME="Radeon RX 580" llama-server \
 | 32k | fp16 | 2854 MB | 24.45 t/s |
 | 64k | fp16 | 4430 MB | 24.46 t/s |
 | 64k | q8_0 | 1678 MB | 16.49 t/s |
-| 128k | fp16 | — | fails to allocate |
-| 128k | q8_0 | 2106 MB | 17.28 t/s |
+| 128k | fp16, `-ub 512` | — | **fails to allocate** (7156 MB) |
+| 128k | fp16, `-ub 256` | 5290 MB | 26.7 t/s |
+| 128k | q8_0, `-ub 512` | 2106 MB | 17.28 t/s |
+
+The second allocated buffer is not the KV cache — it is the compute graph, and it
+scales with **ubatch** as well as context. At `-c 65536`: `-ub 512` -> 2375 MB,
+`-ub 256` -> 1221 MB, `-ub 128` -> 644 MB, with the KV constant at 805 MB. This is
+why 128k looked impossible at full precision until ubatch was cut: the KV at 128k
+is only 1.61 GB (6 global layers x 4 kv-heads x 128 dims x fp16, matching Liquid's
+published 1.6 GB), while the compute buffer at `-ub 512` was 4.3 GB.
+
+The same ubatch matters for latency: `llama-server` re-evaluates `ubatch + 4`
+prompt tokens on every request, so a 4k prompt costs 516 tokens of rework at
+`-ub 512` (16.9 s) and 260 at `-ub 256` (8.2 s). Below 256 the prompt cache stops
+working altogether (4001 tokens re-processed per request).
 
 Vision (LFM3-VL-2B + projector): add `--image-max-tokens 256`. Without it the
 encoder sizes its compute buffer from the image — a 1680x2866 chart asked for

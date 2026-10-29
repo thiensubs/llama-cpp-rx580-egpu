@@ -18,7 +18,7 @@ temporary instrumentation and disables flash attention on this device. Read the
 | GPU 1 | AMD Radeon Pro 450, 2 GB, internal |
 | GPU 2 | Intel HD 530, integrated |
 | llama.cpp | `a7af149` |
-| model | LFM3-1.7B Q5_K_M (mixed Q5_K / Q6_K / F32) |
+| model | LFM3-1.7B, f16 and Q5_K_M (Finding 7) |
 
 ## Headline
 
@@ -26,10 +26,12 @@ Same model, same machine, one binary:
 
 | config | generation | CPU per token | cores busy |
 |---|---|---|---|
-| CPU, 4 threads | 11.8 t/s | 0.346 s | 374% |
-| GPU, whole graph | 25 t/s | 0.008 s | 20% |
+| CPU, 4 threads, Q5_K | 11.8 t/s | 0.346 s | 374% |
+| GPU, whole graph, Q5_K | 28.2 t/s | 0.008 s | 20% |
+| GPU, whole graph, f16 | 36.8 t/s | 0.008 s | 20% |
 
-Prompt processing 36 t/s. Energy: 0.27 Wh per 1000 tokens.
+Prompt processing 49 t/s on Q5_K and 77 t/s on f16. Energy: 0.27 Wh per 1000
+tokens.
 
 ## Finding 1 — an external GPU is forced onto shared (host) buffers
 
@@ -166,14 +168,51 @@ threadgroup) default to 1 and 2. Swept on the RX 580 with `llama-bench tg64`
 One constant changes, `N_R0_Q5_K 1 -> 2`: **+10%** (25.46 → 28.12). Through the
 server, with sampling, 24.45 → 26.7 t/s. Output text unchanged at temperature 0.
 
+## Finding 7 — quantisation is slower than f16 on this card
+
+Every quantised file is smaller than the f16 one, and every one of them
+generates fewer tokens per second. `llama-bench tg64`, `-ngl 999 -lm none -t 1
+-ub 256`, three repeats, one model:
+
+| weights | file | tg64 | pp32 | GB/s moved |
+|---|---|---|---|---|
+| f16 | 3.22 GiB | 36.07 ± 1.92 | 76.89 ± 0.24 | 125 |
+| Q5_K_M | 1.16 GiB | 28.21 ± 0.24 | 49.02 ± 0.06 | 35.5 |
+| Q4_0 | 0.98 GiB | 4.30 ± 0.39 | 14.87 ± 0.51 | CPU |
+| Q8_0 | 1.71 GiB | 3.37 ± 0.05 | 13.76 ± 2.33 | CPU |
+
+The 217 GB/s that `repro/bwprobe.m` measures says reading them should cost
+16.0 ms (f16) and 5.8 ms (Q5_K). Measured per token: 27.2 ms and 35.5 ms. Q5_K
+saves 10.2 ms of traffic and spends about 19 ms rebuilding 5.5-bit blocks —
+shifts and masks, on a GPU with weak integer throughput. The isolated kernel
+agrees: q5_K `MUL_MAT` at m=4096, k=14336 is 892 µs for 40.4 MB of weights,
+45 GB/s and 131 GFLOPS, 21% of the same card's streaming rate.
+
+Live through `llama-server` with sampling on: 26.7 → 35.1 t/s, and 34.9 t/s with
+the vision server sharing the card (5484 MB + 2008 MB of 8590 MB).
+
+Q4_0 and Q8_0 are not slow kernels, they are missing ones. `test-backend-ops
+perf` reports their `MUL_MAT` as "not supported" here, so llama.cpp runs those
+matmuls on the CPU. Admitting them to the width-64 whitelist
+(`ggml_metal_supports_mul_mat_wide`, `ggml-metal-device.m`) makes them run and
+fail correctness instead: Q4_0 0/121 cases passed, Q8_0 5 failures. That
+whitelist admits F32, F16, Q5_K and Q6_K only, and the narrow list is earned
+rather than cautious.
+
+On an Apple GPU the same quantised weights win, which is why the defaults look
+the way they do. This is a property of the card, not of the format.
+
 ## Recipes
 
 Text model, whole graph on the card:
 
 ```bash
 GGML_METAL_DEVICE_NAME="Radeon RX 580" llama-server \
-  -m model.gguf -ngl 999 -lm none -t 1 -c 65536 --metrics
+  -m model.gguf -ngl 999 -lm none -t 1 -c 65536 -ub 256 --metrics
 ```
+
+Keep the weights at f16 here (Finding 7). Q5_K is the fallback when VRAM is
+short, not a speed win.
 
 `-t 1` because with the graph on the GPU the CPU threads only spin
 (0.008 vs 0.067 CPU-s/token). Context sizing, measured:

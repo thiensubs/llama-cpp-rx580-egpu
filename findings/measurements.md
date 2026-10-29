@@ -119,3 +119,58 @@ End to end through `llama-server` with sampling on, same prompt at temperature 0
 A local usage log of 5-minute buckets pairing tokens with the wattage
 the power meter sampled in the same window, counting only energy drawn while a
 request was in flight: **0.267–0.333 Wh per 1000 tokens** across four runs.
+
+## Quantisation vs speed (Finding 7)
+
+`llama-bench`, `-ngl 999 -lm none -t 1 -p 32 -n 64 -r 3 -ub 256`, same 1.73B
+model, one binary, weights converted from the same f16 file:
+
+| weights | file | tg64 | pp32 | bytes/weight |
+|---|---|---|---|---|
+| f16 | 3.22 GiB | 36.07 ± 1.92 | 76.89 ± 0.24 | 16.0 |
+| Q5_K_M | 1.16 GiB | 28.21 ± 0.24 | 49.02 ± 0.06 | 5.8 |
+| Q4_0 | 0.98 GiB | 4.30 ± 0.39 | 14.87 ± 0.51 | 4.9 |
+| Q8_0 | 1.71 GiB | 3.37 ± 0.05 | 13.76 ± 2.33 | 8.5 |
+
+The Q4_0 and Q8_0 rows are not kernel measurements. On this backend their
+MUL_MAT is reported as "not supported" (`test-backend-ops perf -o MUL_MAT
+-p 'type_a=q8_0' -b MTL0`), so llama.cpp runs those matmuls on the CPU. Adding
+both types to the width-64 whitelist makes them run on the GPU and fail
+correctness instead (`test-backend-ops test -o MUL_MAT -p 'type_a=...' -b MTL0`):
+
+| type | result |
+|---|---|
+| q4_0 | 0/121 cases passed |
+| q8_0 | 5 cases failed |
+
+Bandwidth actually moved per token, from the same runs (file size / time):
+
+| weights | GB/s |
+|---|---|
+| f16 | 125 |
+| Q5_K | 35.5 |
+
+Roofline from `repro/bwprobe.m` on the same card, 217 GB/s:
+
+| weights | bytes | read time | measured | remainder | t/s |
+|---|---|---|---|---|---|
+| f16 | 3.46 GB | 16.0 ms | 27.2 ms | 11.1 ms | 36.8 |
+| Q5_K | 1.26 GB | 5.8 ms | 35.5 ms | 29.7 ms | 28.2 |
+
+Q5_K saves 10.2 ms of traffic and spends about 19 ms rebuilding the numbers.
+
+Isolated kernel, `test-backend-ops perf -o MUL_MAT -p 'q5_K'` with
+`m=4096, n=1, k=14336`: 892 µs per run, 40.4 MB of weights, 45 GB/s,
+131 GFLOPS. That is 21% of the 217 GB/s the same card reaches when it streams
+plain floats, so the loss is in the unpack, not in the memory system and not in
+dispatch.
+
+Live through `llama-server` with sampling on, 128 tokens: 26.7 t/s on Q5_K,
+35.1 t/s on f16. With the vision server resident beside it, 34.9 t/s. Allocated
+buffers on the card: f16 text 3458 + 805 + 1221 = 5484 MB, vision 379 + 1250 +
+379 = 2008 MB, of 8590 MB usable.
+
+Caveat: the Q4_0 file is a QAD conversion, not a plain one, and it allocates in
+217 MB chunks where the other models use a single 1250 MB buffer. Part of its
+gap may be tensor layout rather than the CPU fallback. Everything else above is
+a single machine, one model, three repetitions.

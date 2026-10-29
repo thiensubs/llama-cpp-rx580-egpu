@@ -2,8 +2,11 @@
 # Start llama-server for LFM3 on the RX580 eGPU when it is attached, on the CPU
 # when it is not, and on the CPU if the GPU path does not come up.
 #
-# GPU recipe (measured 2026-10-28): prompt 36 t/s, generation 25 t/s,
-# 0.008 CPU-seconds per token.
+# GPU recipe (measured 2026-10-29): prompt 77 t/s, generation 36 t/s on f16
+# weights, 0.008 CPU-seconds per token.
+#   f16 weights    keep f16: on this card every quantised file is slower even
+#                  though it is smaller (Q5_K 28.2 t/s, Q4_0 4.3, Q8_0 3.4).
+#                  See Finding 7. Use Q5_K only when VRAM is short.
 #   -ngl 999        whole graph on the GPU
 #   -lm none        REQUIRED: mmap makes llama.cpp wrap the weights with
 #                   ggml_metal_buffer_map() -> shared host memory, and the GPU
@@ -14,10 +17,14 @@
 #                                        shifts when it is unplugged
 set -u
 
-MODEL=${MODEL:-$HOME/models/LFM3-1.7B-Q5_K_M.gguf}
+MODEL=${MODEL:-$HOME/models/LFM3-1.7B-instruct-f16.gguf}
 BIN=${BIN:-llama-server}
 PORT=${PORT:-8090}
 CTX=${CTX:-65536}
+# ubatch 256: the server re-evaluates (ubatch + 4) prompt tokens on every
+# request, so a 4k prompt costs 260 tokens of rework instead of 516. Below 256
+# the prompt cache stops working and every request reprocesses all 4001 tokens.
+UB=${UB:-256}
 # Optional KV quantisation, e.g. KVQ="-ctk q8_0 -ctv q8_0". Only needed for
 # very long context: at -c 131072 fp16 KV fails to allocate, q8_0 fits in 2.1 GB
 # at the cost of ~30% generation speed (24.5 -> 17.3 t/s).
@@ -50,7 +57,7 @@ wait_healthy() {
 if [ "${LFM3_FORCE:-}" != "cpu" ] && gpu_attached; then
     echo "run-rx580: RX 580 attached -> GPU (-ngl 999 -lm none -t 1)"
     GGML_METAL_DEVICE_NAME="Radeon RX 580" \
-        "$BIN" -m "$MODEL" -ngl 999 -lm none -t 1 -c "$CTX" $KVQ --metrics --port "$PORT" &
+        "$BIN" -m "$MODEL" -ngl 999 -lm none -t 1 -c "$CTX" -ub "$UB" $KVQ --metrics --port "$PORT" &
     pid=$!
     # a half-seated eGPU can enumerate and then fail; do not leave a dead server
     if wait_healthy "$pid"; then

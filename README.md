@@ -21,6 +21,11 @@ wrong side of that trade — so it is also the *less accurate* choice, not just
 the slower one. Details in
 [Finding 7](#finding-7--quantisation-is-slower-than-f16-on-this-card).
 
+**If you run any MoE model, read [Finding 8](#finding-8--no-moe-model-runs-on-the-gpu-on-a-non-apple-device) first.**
+On every non-Apple GPU its expert matmuls run on the CPU while the weights sit
+in VRAM. One gate causes it; fixing it took a 7.9B MoE from *no request
+finishing* to 7.8 t/s.
+
 **Status: research notes, not an upstream-ready change.** The patch contains
 temporary instrumentation and disables flash attention on this device. Read the
 "not done" section before using anything here.
@@ -218,6 +223,34 @@ rather than cautious.
 On an Apple GPU the same quantised weights win, which is why the defaults look
 the way they do. This is a property of the card, not of the format.
 
+## Finding 8 — no MoE model runs on the GPU on a non-Apple device
+
+`MUL_MAT_ID` — the op that runs routed expert matmuls — is refused whenever
+`has_simdgroup_reduction` is false, which is **every AMD and Intel GPU**:
+
+```objc
+case GGML_OP_MUL_MAT_ID:
+    if (!has_simdgroup_reduction) {
+        return false;
+    }
+```
+
+The weights still get placed in VRAM, so the model looks loaded and the
+placement table looks correct. Only the compute goes to the CPU, which makes a
+mis-dispatch indistinguishable from a slow model. Ling-3.0-tiny Q6_K (7.9B,
+128 experts, 8 used) measured on the RX 580:
+
+| | before | after |
+|---|---|---|
+| prompt processing | 2.97 t/s | **27.2 t/s** |
+| generation | did not finish a request | **7.8 t/s** |
+| `MTL0_Private` buffer | 5996 MiB | 5996 MiB |
+
+The kernel already existed and was already built on the validated matvec
+templates. Pointing the gate at the same width-64 whitelist `MUL_MAT` uses
+gives `224/224` on `test-backend-ops -o MUL_MAT_ID`. Full write-up and the
+self-check commands: [findings/moe-on-non-apple-gpus.md](findings/moe-on-non-apple-gpus.md).
+
 ## Recipes
 
 Text model, whole graph on the card:
@@ -292,6 +325,8 @@ Measured here: RX 580 217 GB/s, Pro 450 74 GB/s.
 
 ```
 findings/measurements.md   the numbers behind every claim above
+findings/moe-on-non-apple-gpus.md   the MUL_MAT_ID gate - read this if you run
+                           any MoE model on AMD or Intel
 patches/rx580-metal-width64.patch   full local patch (width port + the four fixes)
 patches/upstream-metal-fixes.patch  the two self-contained fixes (concurrency, SSM_CONV)
 repro/simdprobe.m          simd width + primitive correctness per device

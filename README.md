@@ -251,6 +251,35 @@ templates. Pointing the gate at the same width-64 whitelist `MUL_MAT` uses
 gives `224/224` on `test-backend-ops -o MUL_MAT_ID`. Full write-up and the
 self-check commands: [findings/moe-on-non-apple-gpus.md](findings/moe-on-non-apple-gpus.md).
 
+## Finding 9 — `GATED_DELTA_NET` ran on the CPU because 32 threads are hardcoded
+
+Hybrid models with linear-attention layers were split into **50 sub-graphs per
+token**, each GPU piece shorter than the synchronisation around it. The op was
+`GATED_DELTA_NET`, found with a five-line `GGML_SPLIT_LOG` diagnostic in
+`ggml-backend.cpp` after `GGML_SCHED_DEBUG` printed nothing.
+
+Two hardcoded 32s, and the kernel was never the problem:
+
+```c
+const int nsg = op->src[2]->ne[0]/32;          // pipeline getter
+dispatch_threadgroups(..., 32, nsg, 1);        // dispatch, x = 32 threads
+```
+
+With 32 threads in x on a 64-lane device, one simdgroup spans two output rows
+and `simd_sum` adds them together. Opening the gate without fixing this gave
+**18.7 t/s of garbage**; fixing both to follow `simd_width` gave:
+
+| | before | after |
+|---|---|---|
+| splits per token | 50 | **0** |
+| prompt | 30.3 t/s | **49.2 t/s** |
+| generation | 7.8 t/s | **20.8 t/s** |
+| greedy output | — | **byte-identical to CPU** |
+
+The kernel body needed no change: `NSG` is a template parameter and
+`is = tx*NSG + j` already derives from the thread count. Write-up:
+[findings/gated-delta-net-width.md](findings/gated-delta-net-width.md).
+
 ## Recipes
 
 Text model, whole graph on the card:
@@ -327,6 +356,8 @@ Measured here: RX 580 217 GB/s, Pro 450 74 GB/s.
 findings/measurements.md   the numbers behind every claim above
 findings/moe-on-non-apple-gpus.md   the MUL_MAT_ID gate - read this if you run
                            any MoE model on AMD or Intel
+findings/gated-delta-net-width.md   the 32-thread dispatch bug in hybrid models,
+                           and the GGML_SPLIT_LOG diagnostic that found it
 patches/rx580-metal-width64.patch   full local patch (width port + the four fixes)
 patches/upstream-metal-fixes.patch  the two self-contained fixes (concurrency, SSM_CONV)
 repro/simdprobe.m          simd width + primitive correctness per device

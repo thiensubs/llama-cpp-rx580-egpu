@@ -280,6 +280,32 @@ The kernel body needed no change: `NSG` is a template parameter and
 `is = tx*NSG + j` already derives from the thread count. Write-up:
 [findings/gated-delta-net-width.md](findings/gated-delta-net-width.md).
 
+## Finding 10 — the Q8_0 matvec assumed 32 lanes in two places
+
+Q8_0 was refused at width 64, so any model carrying Q8_0 tensors — most Q6_K
+and "high quality" GGUFs — ran those matmuls on the CPU, once per layer, with a
+graph split on each side. Two bugs, and the second is the interesting one:
+
+```c
+const short ix = tiisg/(NW/NQ);   // 4 only when NW is 32; 8 at width 64
+yb += NSG*NQ*QK8_0;               // loop strides (NW*NSG)/NLB, pointer did not
+```
+
+The first reads past a 32-element block; the second reads the wrong
+activations on every iteration after the first — but only when `nb` exceeds one
+iteration, which is why `k=256` passed and `k=4096` failed.
+
+| | before | after |
+|---|---|---|
+| `test-backend-ops -p 'type_a=q8_0'` | 7 failures | **116/116** |
+| Ling-3.0-tiny generation | 21.3 t/s | **24.9-25.2 t/s** |
+| greedy output vs CPU | — | **byte-identical** |
+
+The unfixed kernel reached the same speed but produced paraphrased text. A
+wrong 16-bit kernel does not emit garbage, it emits confident near-answers —
+byte-identical greedy output is what separated reordering from a bug, and here
+it agreed with the gate. Write-up: [findings/q8-0-width64.md](findings/q8-0-width64.md).
+
 ## Recipes
 
 Text model, whole graph on the card:
@@ -358,6 +384,7 @@ findings/moe-on-non-apple-gpus.md   the MUL_MAT_ID gate - read this if you run
                            any MoE model on AMD or Intel
 findings/gated-delta-net-width.md   the 32-thread dispatch bug in hybrid models,
                            and the GGML_SPLIT_LOG diagnostic that found it
+findings/q8-0-width64.md    the two lane bugs in the Q8_0 matvec
 patches/rx580-metal-width64.patch   full local patch (width port + the four fixes)
 patches/upstream-metal-fixes.patch  the two self-contained fixes (concurrency, SSM_CONV)
 repro/simdprobe.m          simd width + primitive correctness per device

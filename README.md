@@ -218,6 +218,32 @@ Four flags carry all of the performance:
 
 Keep weights at f16. Q5_K is the low-VRAM fallback, not a speed win.
 
+### Using both GPUs
+
+`GGML_METAL_DEVICE_INDEX` selects among all three devices: 0 is the RX 580, 1 the
+internal Radeon Pro 450 (2048 MiB), 2 the Intel HD 530. Two servers on two cards
+run independently. Measured with both busy at once, each unchanged from running
+alone:
+
+| card | model | VRAM used | generation |
+|---|---|---|---|
+| RX 580 (index 0) | Ling-3.0-tiny Q6_K | 6003 MiB | **27.9 t/s** |
+| Pro 450 (index 1) | LFM3-1.7B Q5_K_M | 1192 MiB | **6.3 t/s** |
+
+Three things that do **not** work, each measured:
+
+- **Splitting one model across both cards.** The 580 streams at 217 GB/s and the
+  450 at 74 GB/s, and a token walks the layers in order, so the slow card gates
+  the pipeline. Putting 23% of the layers on a card 3x slower turns 50.8 ms/token
+  into about 74 ms: 13.5 t/s instead of 19.7.
+- **The vision model on the 450.** It needs 4.4 GB of Metal buffers and the card
+  has 2 GB: `ggml_metal_buffer_init: failed to allocate buffer, size = 4372.52 MiB`.
+- **Speculative decoding with a draft on the 450.** 6.3 t/s cannot accelerate a
+  19.7-27.9 t/s target.
+
+What it is good for: a second small model that does not compete with the main
+one, on an internal PCIe card that costs nothing on the Thunderbolt link.
+
 ### Context sizing
 
 | context | KV | buffers | generation |

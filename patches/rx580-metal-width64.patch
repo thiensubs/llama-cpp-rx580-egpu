@@ -37,10 +37,10 @@ index 22e5fd9c7..31e413fc1 100644
      GGML_ASSERT(sched);
      return sched->n_splits;
 diff --git a/ggml/src/ggml-metal/ggml-metal-context.m b/ggml/src/ggml-metal/ggml-metal-context.m
-index 597c126ca..e44e61d39 100644
+index 597c126ca..e5dfa857b 100644
 --- a/ggml/src/ggml-metal/ggml-metal-context.m
 +++ b/ggml/src/ggml-metal/ggml-metal-context.m
-@@ -141,6 +141,16 @@ ggml_metal_t ggml_metal_init(ggml_metal_device_t dev) {
+@@ -141,6 +141,17 @@ ggml_metal_t ggml_metal_init(ggml_metal_device_t dev) {
  
          res->use_concurrency = getenv("GGML_METAL_CONCURRENCY_DISABLE") == nil;
  
@@ -48,7 +48,8 @@ index 597c126ca..e44e61d39 100644
 +        // ordering when several command buffers are committed from different threads
 +        // on the same queue. That races the graph and silently corrupts results
 +        // (observed with LFM3 on an AMD RX 580). Keep concurrency for Apple GPUs only.
-+        if (res->use_concurrency && ![[device name] hasPrefix:@"Apple "]) {
++        if (res->use_concurrency && ![[device name] hasPrefix:@"Apple "] &&
++            getenv("GGML_METAL_CONCURRENCY_ENABLE") == NULL) {
 +            GGML_LOG_INFO("%s: disabling concurrency on non-Apple GPU: %s\n",
 +                          __func__, [[device name] UTF8String]);
 +            res->use_concurrency = false;
@@ -57,7 +58,7 @@ index 597c126ca..e44e61d39 100644
          {
              const char * val = getenv("GGML_METAL_GRAPH_DEBUG");
              res->debug_graph = val ? atoi(val) : 0;
-@@ -251,10 +261,25 @@ void ggml_metal_free(ggml_metal_t ctx) {
+@@ -251,10 +262,25 @@ void ggml_metal_free(ggml_metal_t ctx) {
      return ctx->name;
  }
  
@@ -84,7 +85,7 @@ index 597c126ca..e44e61d39 100644
          ctx->cmd_buf_last = nil;
      }
  
-@@ -486,6 +511,7 @@ enum ggml_status ggml_metal_graph_compute(ggml_metal_t ctx, struct ggml_cgraph *
+@@ -486,6 +512,7 @@ enum ggml_status ggml_metal_graph_compute(ggml_metal_t ctx, struct ggml_cgraph *
  
      // number of threads in addition to the main thread
      const int n_cb = ctx->n_cb;
@@ -92,7 +93,7 @@ index 597c126ca..e44e61d39 100644
  
      // keep the memory wired
      ggml_metal_device_rsets_keep_alive(ctx->dev);
-@@ -600,6 +626,19 @@ enum ggml_status ggml_metal_graph_compute(ggml_metal_t ctx, struct ggml_cgraph *
+@@ -600,6 +627,19 @@ enum ggml_status ggml_metal_graph_compute(ggml_metal_t ctx, struct ggml_cgraph *
  
          dispatch_apply(n_cb, ctx->d_queue, ctx->encode_async);
  
@@ -113,7 +114,7 @@ index 597c126ca..e44e61d39 100644
          //[ctx->cmd_buf_last waitUntilCompleted];
  
 diff --git a/ggml/src/ggml-metal/ggml-metal-device.cpp b/ggml/src/ggml-metal/ggml-metal-device.cpp
-index 25a8a3ef6..21926230b 100644
+index 25a8a3ef6..a53424fbc 100644
 --- a/ggml/src/ggml-metal/ggml-metal-device.cpp
 +++ b/ggml/src/ggml-metal/ggml-metal-device.cpp
 @@ -475,7 +475,7 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_soft_max(ggml_me
@@ -125,7 +126,22 @@ index 25a8a3ef6..21926230b 100644
  
      return res;
  }
-@@ -1059,7 +1059,7 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mv(ggml_meta
+@@ -753,11 +753,12 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_gated_delta_net(
+     // state is src[5], 4D [S_v, S_v, H_v, n_seqs] (s0 only); K is op param 0.
+     const int K = ggml_get_op_params_i32(op, 0);
+ 
+-    const int nsg = op->src[2]->ne[0]/32;
++    const int nw  = ggml_metal_device_get_props(ggml_metal_library_get_device(lib))->simd_width;
++    const int nsg = op->src[2]->ne[0]/nw;
+ 
+     GGML_ASSERT(op->src[5]->type == GGML_TYPE_F32);
+     GGML_ASSERT(op->ne[0] == ne20 * ne21);
+-    GGML_ASSERT(ne20 % 32 == 0);
++    GGML_ASSERT(ne20 % nw == 0);
+ 
+     snprintf(base, 256, "kernel_gated_delta_net_%s_%d", ggml_type_name(op->src[0]->type), nsg);
+     snprintf(name, 256, "%s_ne20=%d_ne30=%d_K=%d", base, ne20, ne30, K);
+@@ -1059,7 +1060,7 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mv(ggml_meta
                      nsg = std::min(4, (ne00 + 127) / 128);
                      nr0 = 2;
                      nr1 = 1;
@@ -134,7 +150,7 @@ index 25a8a3ef6..21926230b 100644
                      suffix = ne00 % 4 == 0 ? "_4" : "";
                  }
              } break;
-@@ -1356,7 +1356,7 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mv_id(ggml_m
+@@ -1356,7 +1357,7 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mv_id(ggml_m
                  nsg = std::min(4, (ne00 + 127) / 128);
                  nr0 = 2;
                  nr1 = 1;
@@ -143,7 +159,7 @@ index 25a8a3ef6..21926230b 100644
                  suffix = ne00 % 4 == 0 ? "_4" : "";
              } break;
          case GGML_TYPE_Q1_0:
-@@ -2281,7 +2281,7 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_norm(ggml_metal_
+@@ -2281,7 +2282,7 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_norm(ggml_metal_
          ggml_metal_cv_free(cv);
      }
  
@@ -165,7 +181,7 @@ index dd7cdb958..52450bdb4 100644
      bool has_bfloat;
      bool has_tensor;
 diff --git a/ggml/src/ggml-metal/ggml-metal-device.m b/ggml/src/ggml-metal/ggml-metal-device.m
-index 451f65299..4fc3e477d 100644
+index 451f65299..608d66b71 100644
 --- a/ggml/src/ggml-metal/ggml-metal-device.m
 +++ b/ggml/src/ggml-metal/ggml-metal-device.m
 @@ -465,6 +465,11 @@ ggml_metal_library_t ggml_metal_library_init(ggml_metal_device_t dev) {
@@ -336,7 +352,7 @@ index 451f65299..4fc3e477d 100644
          case GGML_OP_ROPE:
          case GGML_OP_ROPE_BACK:
              return true;
-@@ -1847,7 +1947,11 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
+@@ -1847,12 +1947,18 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
          case GGML_OP_SSM_SCAN:
              return has_simdgroup_reduction;
          case GGML_OP_SSM_CONV:
@@ -349,7 +365,15 @@ index 451f65299..4fc3e477d 100644
          case GGML_OP_RWKV_WKV6:
          case GGML_OP_RWKV_WKV7:
              return true;
-@@ -1862,10 +1966,16 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
+         case GGML_OP_GATED_DELTA_NET:
+-            return has_simdgroup_reduction && op->src[2]->ne[0] % 32 == 0;
++            // the kernel derives nsg from the real simd width; the gate must too,
++            // otherwise every non-Apple GPU keeps this op on the CPU
++            return op->src[2]->ne[0] % dev->props.simd_width == 0;
+         case GGML_OP_SOLVE_TRI:
+             return has_simdgroup_reduction && op->src[0]->type == GGML_TYPE_F32;
+         case GGML_OP_MUL_MAT:
+@@ -1862,10 +1968,16 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
                  ggml_metal_op_mul_mat_use_fwht(op, dev->props.max_theadgroup_memory_size)) {
                  return has_simdgroup_reduction;
              }
@@ -361,12 +385,12 @@ index 451f65299..4fc3e477d 100644
                      ggml_metal_op_mul_mat_use_mm(op, has_simdgroup_mm));
          case GGML_OP_MUL_MAT_ID:
 +            if (!has_simdgroup_reduction) {
-+                return false;
++                return dev->props.simd_width > 0 && ggml_metal_supports_mul_mat_wide(op);
 +            }
              return ggml_metal_supports_mul_mat_op(
                      has_simdgroup_reduction, op, false,
                      ggml_metal_op_mul_mat_id_use_mm(op, has_simdgroup_mm));
-@@ -2146,6 +2256,10 @@ ggml_metal_buffer_t ggml_metal_buffer_init(ggml_metal_device_t dev, size_t size,
+@@ -2146,6 +2258,10 @@ ggml_metal_buffer_t ggml_metal_buffer_init(ggml_metal_device_t dev, size_t size,
  
      res->owned = true;
  
@@ -377,7 +401,7 @@ index 451f65299..4fc3e477d 100644
      res->n_buffers = 1;
  
      if (res->all_data != NULL) {
-@@ -2197,6 +2311,9 @@ ggml_metal_buffer_t ggml_metal_buffer_map(ggml_metal_device_t dev, void * ptr, s
+@@ -2197,6 +2313,9 @@ ggml_metal_buffer_t ggml_metal_buffer_map(ggml_metal_device_t dev, void * ptr, s
  
      res->is_shared = true;
      res->owned = false;
@@ -387,7 +411,7 @@ index 451f65299..4fc3e477d 100644
  
      res->n_buffers = 0;
  
-@@ -2223,7 +2340,45 @@ ggml_metal_buffer_t ggml_metal_buffer_map(ggml_metal_device_t dev, void * ptr, s
+@@ -2223,7 +2342,45 @@ ggml_metal_buffer_t ggml_metal_buffer_map(ggml_metal_device_t dev, void * ptr, s
          res->buffers[res->n_buffers].metal = nil;
  
          if (size_aligned > 0) {
@@ -448,7 +472,7 @@ index 6e566084a..0a6838102 100644
  
  #define N_R0_Q6_K 2
 diff --git a/ggml/src/ggml-metal/ggml-metal-ops.cpp b/ggml/src/ggml-metal/ggml-metal-ops.cpp
-index 14712c3e8..5c0421db2 100644
+index 14712c3e8..1e9bb7713 100644
 --- a/ggml/src/ggml-metal/ggml-metal-ops.cpp
 +++ b/ggml/src/ggml-metal/ggml-metal-ops.cpp
 @@ -1695,6 +1695,8 @@ int ggml_metal_op_soft_max(ggml_metal_op_t ctx, int idx) {
@@ -478,7 +502,18 @@ index 14712c3e8..5c0421db2 100644
          // Each threadgroup has BATCH_SIZE threads, each handling one token
          const int n_token_batches = (ne1 + BATCH_SIZE - 1) / BATCH_SIZE;
          ggml_metal_encoder_dispatch_threadgroups(enc, ne01, n_token_batches, ne02, BATCH_SIZE, 1, 1);
-@@ -2654,6 +2656,8 @@ static int ggml_metal_op_mul_mat_mv(ggml_metal_op_t ctx, int idx) {
+@@ -2143,8 +2145,9 @@ int ggml_metal_op_gated_delta_net(ggml_metal_op_t ctx, int idx) {
+     ggml_metal_encoder_set_buffer  (enc, bid_out,                              ida++); // state_out
+ 
+     const int nsg = pipeline.nsg;
++    const int nw  = op->src[2]->ne[0]/nsg;
+ 
+-    ggml_metal_encoder_dispatch_threadgroups(enc, op->src[2]->ne[0]/nsg, op->src[2]->ne[1], op->src[2]->ne[3], 32, nsg, 1);
++    ggml_metal_encoder_dispatch_threadgroups(enc, op->src[2]->ne[0]/nsg, op->src[2]->ne[1], op->src[2]->ne[3], nw, nsg, 1);
+ 
+     return n_fuse;
+ }
+@@ -2654,6 +2657,8 @@ static int ggml_metal_op_mul_mat_mv(ggml_metal_op_t ctx, int idx) {
      ggml_metal_library_t lib = ctx->lib;
      ggml_metal_encoder_t enc = ctx->enc;
  
@@ -487,7 +522,7 @@ index 14712c3e8..5c0421db2 100644
      GGML_TENSOR_LOCALS( int32_t, ne0, op->src[0], ne);
      GGML_TENSOR_LOCALS(uint64_t, nb0, op->src[0], nb);
      GGML_TENSOR_LOCALS( int32_t, ne1, op->src[1], ne);
-@@ -2705,9 +2709,9 @@ static int ggml_metal_op_mul_mat_mv(ggml_metal_op_t ctx, int idx) {
+@@ -2705,9 +2710,9 @@ static int ggml_metal_op_mul_mat_mv(ggml_metal_op_t ctx, int idx) {
          op->src[0]->type == GGML_TYPE_F16 ||
          op->src[0]->type == GGML_TYPE_BF16 ||
          op->src[0]->type == GGML_TYPE_Q8_0) {
@@ -499,7 +534,7 @@ index 14712c3e8..5c0421db2 100644
      }
  
      return 1;
-@@ -2746,7 +2750,7 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
+@@ -2746,7 +2751,7 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
  
      // first try to use small-batch mat-mv kernels
      // these should be efficient for BS [2, ~8]
@@ -508,7 +543,7 @@ index 14712c3e8..5c0421db2 100644
          (
           (
            (
-@@ -3128,9 +3132,9 @@ int ggml_metal_op_mul_mat_id(ggml_metal_op_t ctx, int idx) {
+@@ -3128,9 +3133,9 @@ int ggml_metal_op_mul_mat_id(ggml_metal_op_t ctx, int idx) {
              op->src[0]->type == GGML_TYPE_F16 ||
              op->src[0]->type == GGML_TYPE_BF16 ||
              op->src[0]->type == GGML_TYPE_Q8_0) {
@@ -520,7 +555,7 @@ index 14712c3e8..5c0421db2 100644
          }
      }
  
-@@ -4602,14 +4606,17 @@ int ggml_metal_op_norm(ggml_metal_op_t ctx, int idx) {
+@@ -4602,14 +4607,17 @@ int ggml_metal_op_norm(ggml_metal_op_t ctx, int idx) {
          ggml_metal_library_get_pipeline_norm_scale(lib, op) :
          ggml_metal_library_get_pipeline_norm(lib, op, n_fuse);
  

@@ -61,7 +61,7 @@ output: "#number 17 / # 17+ / # Scalling 17545 1751754"
 
 ## The fix
 
-Three lines, none of them in the kernel body:
+Four lines, none of them in the kernel body:
 
 ```c
 const int nw  = ...->simd_width;
@@ -70,6 +70,21 @@ GGML_ASSERT(ne20 % nw == 0);            // was % 32
 
 dispatch_threadgroups(..., nw, nsg, 1); // was 32
 ```
+
+And the support gate, which is the one that actually decides whether the op
+runs on the GPU at all:
+
+```c
+case GGML_OP_GATED_DELTA_NET:
+-   return has_simdgroup_reduction && op->src[2]->ne[0] % 32 == 0;
++   return op->src[2]->ne[0] % dev->props.simd_width == 0;
+```
+
+`has_simdgroup_reduction` is false on every AMD and Intel GPU, so with that
+term in place the op is rejected before the kernel is ever considered and the
+three lines above change nothing. Measured on the RX 580, Ling-3.0-tiny Q6_K,
+`llama-cli -n 160`: 2.4 t/s with only the three lines fixed, 19.9 t/s once the
+gate was corrected as well.
 
 `NSG` is a template parameter and `is = tx*NSG + j` already derives from the
 thread count, so the kernel needed no edit at all. At width 32 the generated

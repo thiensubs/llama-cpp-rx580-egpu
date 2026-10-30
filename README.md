@@ -218,45 +218,6 @@ Four flags carry all of the performance:
 
 Keep weights at f16. Q5_K is the low-VRAM fallback, not a speed win.
 
-### Using both GPUs
-
-`GGML_METAL_DEVICE_INDEX` selects among all three devices: 0 is the RX 580, 1 the
-internal Radeon Pro 450 (2048 MiB), 2 the Intel HD 530. Two servers on two cards
-run independently. Measured with both busy at once, each unchanged from running
-alone:
-
-| card | model | VRAM used | generation |
-|---|---|---|---|
-| RX 580 (index 0) | Ling-3.0-tiny Q6_K | 6003 MiB | **27.9 t/s** |
-| Pro 450 (index 1) | LFM3-1.7B Q5_K_M | 1192 MiB | **6.3 t/s** |
-
-Three things that do **not** work, each measured:
-
-- **Splitting one model across both cards.** `GGML_METAL_DEVICES=2` does register
-  both devices (`MTL0` RX 580, `MTL1` Pro 450), but neither split mode survives
-  loading Ling:
-  - `-sm row` stops at `llama_model_load: error loading model: device MTL0 does
-    not support split buffers`. Only the sycl and hexagon backends implement
-    `ggml_backend_split_buffer_type`; Metal has none.
-  - `-sm layer -ts 78,22` aborts inside the AMD driver:
-    `Assertion failed: (cmdBufInfo->device == rsrc->_res.device), function
-    amdMtlBronzeCmdBufUpdateRsrc, file amd_mtl_bronze_hw_cmd_buffer.c, line 1120`.
-    A command buffer for one device cannot reference a resource created on the
-    other, so layer split dies at the first cross-device tensor.
-
-  Row split is also the only mode that could ever help: layer split is serial, so
-  the slower card would gate every token. Even a perfect row split is bounded by
-  the bandwidth ratio (217 vs 74 GB/s) and 2 GB of VRAM, which caps it near
-  1.3x - against a driver that asserts on the very cross-device references it
-  would need.
-- **The vision model on the 450.** It needs 4.4 GB of Metal buffers and the card
-  has 2 GB: `ggml_metal_buffer_init: failed to allocate buffer, size = 4372.52 MiB`.
-- **Speculative decoding with a draft on the 450.** 6.3 t/s cannot accelerate a
-  19.7-27.9 t/s target.
-
-What it is good for: a second small model that does not compete with the main
-one, on an internal PCIe card that costs nothing on the Thunderbolt link.
-
 ### Context sizing
 
 | context | KV | buffers | generation |

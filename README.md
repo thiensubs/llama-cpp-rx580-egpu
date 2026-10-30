@@ -78,6 +78,32 @@ Two facts survive the correction:
   a few hundred tokens each, so per-turn fixed cost dominates. A cold first turn
   is prefill-bound: 162 s of that 294 s was prompt processing.
 
+## Best config for a real agent
+
+Measured with `pi-local` on this machine. Only one setting changed the *quality*
+of the work; the rest are noise, and saying so is more useful than a list of
+tunables.
+
+```bash
+GGML_METAL_DEVICE_NAME="Radeon RX 580" llama-server \
+  -m Ling-3.0-tiny-Q6_K.gguf -ngl 999 -lm none -t 1 \
+  -c 32768 -ub 256 -b 512 --temp 0.2 \
+  --sleep-idle-seconds 1800 --metrics
+```
+
+| setting | use | measured reason |
+|---|---|---|
+| `--temp` | **0.2** | the only setting that changed correctness: at the 1.0 default, 294 s correct then 61 s wrong; at 0.2, 187 s and 59 s, both correct |
+| `-ub` | 256 | 128 / 256 / 512 prefill a 4,470-token prompt at 69.6 / 69.5 / 68.7 t/s. No difference, so take the one with VRAM headroom |
+| `--parallel` | leave at the default 4 | 1 slot and 4 slots prefill at 69.5 / 69.6 t/s; more slots keep more idle conversations cached, and the KV for this hybrid model is only 216 MiB |
+| `-c` | 32768 | `n_ctx` is per slot. 65536 needs 5290 MB of buffers on top of 6003 MB of weights |
+| `--sleep-idle-seconds` | 1800 while working, 300 to save RAM | sleeping frees 5.6 GB but drops the prompt cache, and re-prefilling a 15k agent prompt costs about 3.6 min |
+| `-ngl 999 -lm none -t 1` | required | findings 1, 5 and 7 |
+
+The number to plan with: **prefill runs at about 69 t/s**, and an agent turn
+prefills its entire system prompt. At 15k tokens that is 3.6 minutes before the
+first token, so keeping the cache alive beats every other knob here.
+
 **Status: research notes, not an upstream-ready change.** The patch carries
 temporary instrumentation and disables flash attention on this device. Read
 [What is not done](#what-is-not-done) before using any of it.

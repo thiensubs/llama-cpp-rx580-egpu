@@ -232,10 +232,23 @@ alone:
 
 Three things that do **not** work, each measured:
 
-- **Splitting one model across both cards.** The 580 streams at 217 GB/s and the
-  450 at 74 GB/s, and a token walks the layers in order, so the slow card gates
-  the pipeline. Putting 23% of the layers on a card 3x slower turns 50.8 ms/token
-  into about 74 ms: 13.5 t/s instead of 19.7.
+- **Splitting one model across both cards.** `GGML_METAL_DEVICES=2` does register
+  both devices (`MTL0` RX 580, `MTL1` Pro 450), but neither split mode survives
+  loading Ling:
+  - `-sm row` stops at `llama_model_load: error loading model: device MTL0 does
+    not support split buffers`. Only the sycl and hexagon backends implement
+    `ggml_backend_split_buffer_type`; Metal has none.
+  - `-sm layer -ts 78,22` aborts inside the AMD driver:
+    `Assertion failed: (cmdBufInfo->device == rsrc->_res.device), function
+    amdMtlBronzeCmdBufUpdateRsrc, file amd_mtl_bronze_hw_cmd_buffer.c, line 1120`.
+    A command buffer for one device cannot reference a resource created on the
+    other, so layer split dies at the first cross-device tensor.
+
+  Row split is also the only mode that could ever help: layer split is serial, so
+  the slower card would gate every token. Even a perfect row split is bounded by
+  the bandwidth ratio (217 vs 74 GB/s) and 2 GB of VRAM, which caps it near
+  1.3x - against a driver that asserts on the very cross-device references it
+  would need.
 - **The vision model on the 450.** It needs 4.4 GB of Metal buffers and the card
   has 2 GB: `ggml_metal_buffer_init: failed to allocate buffer, size = 4372.52 MiB`.
 - **Speculative decoding with a draft on the 450.** 6.3 t/s cannot accelerate a

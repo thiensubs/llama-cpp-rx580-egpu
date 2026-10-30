@@ -30,6 +30,38 @@ carries all ten fixes. [`patches/upstream-metal-fixes.patch`](patches/upstream-m
 carries only findings 3 and 4, for anyone who wants the two safe ones alone.
 **Apply one or the other, not both.**
 
+## How to apply
+
+The patches are generated against one revision. Another revision will reject
+them, and a rejected hunk is not a warning to ignore.
+
+```bash
+git clone https://github.com/ggml-org/llama.cpp
+cd llama.cpp
+git checkout a7af149          # the revision every number here was measured on
+git log --oneline -1          # expect: a7af149a2 cuda : add top-k MoE fusion for 384 experts
+
+# full patch: findings 1-10
+curl -L -o rx580.patch \
+  https://raw.githubusercontent.com/thiensubs/llama-cpp-rx580-egpu/main/patches/rx580-metal-width64.patch
+
+# or, only findings 3 and 4:
+#   .../patches/upstream-metal-fixes.patch
+
+git apply --check rx580.patch   # must print nothing
+git apply rx580.patch
+
+cmake -B build -DGGML_METAL=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j4 --target llama-server llama-cli test-backend-ops
+```
+
+If `git apply --check` prints anything, stop: the checkout is not `a7af149` and
+the result will be the slow state rather than a partial fix.
+
+Then run the gates in [Reproduce](#reproduce). The three that matter are
+`MUL_MAT_ID` 224/224, `type_a=q8_0` 116/116, and a `-lv 4` load that shows the
+weights in `MTL0_Private` instead of on the CPU.
+
 ## Headline numbers
 
 LFM3-1.7B, one binary, one machine:
@@ -56,11 +88,13 @@ Two results matter more than raw speed:
 
 | part | detail |
 |---|---|
-| host | MacBook Pro (MacBookPro13,3), Intel, macOS |
+| host | MacBook Pro (MacBookPro13,3), Intel Core i7-6700HQ, 17 GB RAM |
+| OS | macOS 15.7.7, build 24G720, installed with OpenCore Legacy Patcher (unsupported hardware) |
+| toolchain | Apple clang 17.0.0 (clang-1700.6.4.2), cmake 4.4.4 |
 | GPU 0 | AMD Radeon RX 580, 8 GB, Thunderbolt enclosure (`MTLDeviceLocationExternal`) |
 | GPU 1 | AMD Radeon Pro 450, 2 GB, internal |
 | GPU 2 | Intel HD 530, integrated |
-| llama.cpp | `a7af149` |
+| llama.cpp | `a7af149` exactly; see [How to apply](#how-to-apply) |
 | models | LFM3-1.7B f16 and Q5_K_M; Ling-3.0-tiny Q6_K (7.9B MoE) |
 
 Measured streaming bandwidth: RX 580 **217 GB/s**, internal Pro 450 **74 GB/s**

@@ -384,7 +384,8 @@ findings/moe-on-non-apple-gpus.md   the MUL_MAT_ID gate - read this if you run
                            any MoE model on AMD or Intel
 findings/gated-delta-net-width.md   the 32-thread dispatch bug in hybrid models,
                            and the GGML_SPLIT_LOG diagnostic that found it
-findings/q8-0-width64.md    the two lane bugs in the Q8_0 matvec
+findings/q8-0-width64.md    the two lane bugs in the Q8_0 matvec, and the
+                           support gate that refused the type
 patches/rx580-metal-width64.patch   full local patch (width port + the four fixes)
 patches/upstream-metal-fixes.patch  the two self-contained fixes (concurrency, SSM_CONV)
 repro/simdprobe.m          simd width + primitive correctness per device
@@ -392,5 +393,8 @@ repro/bwprobe.m            VRAM streaming bandwidth per device
 agents/                    launchers and clients used to drive the server
                            (they read $HOME/models/*.gguf unless MODEL/MMPROJ are set)
 ```
+
+Apply one patch or the other, not both: the full patch already contains the two
+fixes from `upstream-metal-fixes.patch`.
 
 Licence: same as llama.cpp (MIT) for the patch; the notes are free to reuse.

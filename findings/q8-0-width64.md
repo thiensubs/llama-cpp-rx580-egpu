@@ -51,6 +51,20 @@ set of blocks. This one is subtle because it is correct at width 32 and correct
 when `nb` fits in a single iteration — which is why `k=256` and `k=1024` passed
 while `k=4096` and `k=5120` failed.
 
+## Bug 3 - the support gate refused the type
+
+The two lane bugs above are unreachable until the op is allowed on the device.
+`ggml_metal_supports_mul_mat_wide` lists the types ported for the real
+simdgroup width, and Q8_0 was not in it, so `MUL_MAT` reported "not supported"
+before any kernel ran and the layer bounced to the CPU:
+
+```c
+case GGML_TYPE_Q5_K:
+case GGML_TYPE_Q6_K:
+case GGML_TYPE_Q8_0:   // added
+    return true;
+```
+
 ## Result
 
 ```

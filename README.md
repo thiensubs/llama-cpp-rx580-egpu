@@ -1,10 +1,65 @@
 # llama.cpp on an Intel Mac with an RX 580 eGPU
 
-Ten findings and a patch from one machine: a MacBook Pro with an AMD card in a
-Thunderbolt enclosure, driven at width 64 by a backend that assumed 32.
+A MacBook Pro with an AMD card in a Thunderbolt enclosure, driven at width 64 by
+a backend that assumed 32. Ten findings and a patch, every number measured on
+that machine. Nothing was hardware-hacked and nothing was submitted upstream.
 
-Every number below was measured on that machine. Nothing was hardware-hacked,
-and nothing was submitted upstream.
+## Does this affect you?
+
+You need all three. Without the third, findings 1-7 still apply and 8-10 do not.
+
+1. A **non-Apple GPU** (AMD or Intel), where `has_simdgroup_reduction` is false
+2. llama.cpp at **`a7af149`**
+3. A **MoE or hybrid model** - anything with routed experts or gated delta net
+
+Symptoms, and where to look first:
+
+| what you see | start at |
+|---|---|
+| the card sits idle while the CPU is pinned | [8](#8-no-moe-model-runs-on-the-gpu-on-a-non-apple-device), [9](#9-gated_delta_net-cannot-run-on-the-gpu-at-all) |
+| 1-3 t/s where the card should do 20+ | [8](#8-no-moe-model-runs-on-the-gpu-on-a-non-apple-device), [9](#9-gated_delta_net-cannot-run-on-the-gpu-at-all) |
+| model "loads", VRAM nearly empty, RAM full | [8](#8-no-moe-model-runs-on-the-gpu-on-a-non-apple-device) |
+| right speed, wrong text | [3](#3-use_concurrency-races-on-non-apple-gpus), [10](#10-the-q8_0-matvec-assumed-32-lanes-in-three-places) |
+| a quantised file slower than f16 | [7](#7-quantisation-is-slower-than-f16-on-this-card) - expected, not a bug |
+
+## What it buys
+
+Ling-3.0-tiny Q6_K (7.9B MoE), same binary, same machine:
+
+| | stock `a7af149` | patched |
+|---|---|---|
+| generation | 0.97 t/s | **19.7 t/s** |
+| prompt processing | 15.5 t/s | **48.4 t/s** |
+| weights in VRAM | 569 MiB | **6003 MiB** |
+| weights in host RAM | 5,622 MiB | **188 MiB** |
+
+Dense model, for scale: LFM3-1.7B does 11.8 t/s on 4 CPU threads and 36.8 t/s at
+f16 on the card.
+
+## Real workload, not a benchmark
+
+`pi-local` running one actual agent task - list the directory, report the largest
+entries - measured through the server's own `/metrics`. The agent takes several
+turns per task, so this is what a working session looks like:
+
+| | first run | repeat run |
+|---|---|---|
+| wall clock | 294 s | **61 s** |
+| prompt tokens processed | 8,936 | 1,846 |
+| prompt tokens served from cache | 16,749 | 15,445 |
+| tokens generated | 893 | 84 |
+| prefill | 55 t/s | 40 t/s |
+| generation | 10.6 t/s | 10.7 t/s |
+
+Three things to take from it:
+
+- **The prompt cache is the whole experience.** The same task, 4.8x faster the
+  second time. Restarting `llama-server` throws it away, which is why a restart
+  feels like a regression rather than a reset.
+- **Generation lands near 10.7 t/s, not the 19.7 t/s benchmark.** Agent turns are
+  a few hundred tokens each, so per-turn fixed cost dominates.
+- **A cold turn is prefill-bound.** 162 s of the 294 s first run was prompt
+  processing, not generation.
 
 **Status: research notes, not an upstream-ready change.** The patch carries
 temporary instrumentation and disables flash attention on this device. Read

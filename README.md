@@ -279,6 +279,23 @@ per request, so a 4k prompt costs 516 tokens of rework at `-ub 512` (16.9 s) and
 260 at `-ub 256` (8.2 s). Below 256 the cache stops working outright (4001
 tokens reprocessed per request).
 
+#### Long context on one card
+
+The buffer that grows with context is **not the KV cache, it is the compute
+buffer**. Ling-3.0-tiny on the RX 580, measured at load:
+
+| context | KV | compute | total | fits in 8192? |
+|---|---|---|---|---|
+| 32k | 216 MiB | 604 MiB | 6900 MiB | yes, 1292 free |
+| 131k, `-ub 256`, fp16 KV | 864 MiB | **2331 MiB** | 9275 MiB | no, 1083 over |
+| 131k, `-ub 128`, q8_0 KV | 459 MiB | **17 MiB** | 6479 MiB | yes, 1713 free |
+
+So 131k needs a smaller ubatch and a quantised KV, not more VRAM:
+`-c 131072 -ub 128 -ctk q8_0 -ctv q8_0` serves at **22.5 t/s** against 27.9 t/s
+at 32k. Adding a second GPU for the KV cache does not help: the KV is the smaller
+term, and llama.cpp binds it to the model's device anyway (`--no-kv-offload`
+moves it to host RAM, not to another card).
+
 ### Vision
 
 LFM3-VL-2B plus projector: add `--image-max-tokens 256`. Without it the encoder

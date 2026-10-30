@@ -38,28 +38,45 @@ f16 on the card.
 
 ## Real workload, not a benchmark
 
-`pi-local` running one actual agent task - list the directory, report the largest
-entries - measured through the server's own `/metrics`. The agent takes several
-turns per task, so this is what a working session looks like:
+`pi-local` running one agent task - "list the files here, which is the largest" -
+against this server. It is a good task because the correct answer (`models`,
+27 GB) needs a `du` scan, while a plain `ls` offers a tempting wrong answer
+(`CFSG.tar.gz`, 5.7 GB).
+
+Same server, same task, only the sampling default differs:
+
+| temperature | run 1 | run 2 | answers |
+|---|---|---|---|
+| 1.0 (llama.cpp default) | 294 s | 61 s | correct, then **wrong** |
+| 0.2 (`--temp 0.2`) | 187 s | **59 s** | correct, correct |
+
+This is the most useful table here. Under the stock default the repeat run is
+4.8x faster **and wrong**: the model skips the expensive tool call and answers
+from the listing it already has. Sampled at 1.0 with a random seed, whether it
+bothers to scan is luck, so "repeat run is faster" was measuring a worse answer.
+No kernel or caching change fixes that.
+
+**Pin it: start the server with `--temp 0.2`.** The launchers in `agents/` do.
+
+What the numbers look like once the work is actually done, read from
+`/metrics` at temperature 1.0:
 
 | | first run | repeat run |
 |---|---|---|
-| wall clock | 294 s | **61 s** |
 | prompt tokens processed | 8,936 | 1,846 |
 | prompt tokens served from cache | 16,749 | 15,445 |
 | tokens generated | 893 | 84 |
 | prefill | 55 t/s | 40 t/s |
 | generation | 10.6 t/s | 10.7 t/s |
 
-Three things to take from it:
+Two facts survive the correction:
 
-- **The prompt cache is the whole experience.** The same task, 4.8x faster the
-  second time. Restarting `llama-server` throws it away, which is why a restart
-  feels like a regression rather than a reset.
+- **The prompt cache still pays.** 15-16k prompt tokens are served from cache per
+  run, which is most of an agent's system prompt. Restarting `llama-server`
+  throws that away, so a restart costs more than it looks.
 - **Generation lands near 10.7 t/s, not the 19.7 t/s benchmark.** Agent turns are
-  a few hundred tokens each, so per-turn fixed cost dominates.
-- **A cold turn is prefill-bound.** 162 s of the 294 s first run was prompt
-  processing, not generation.
+  a few hundred tokens each, so per-turn fixed cost dominates. A cold first turn
+  is prefill-bound: 162 s of that 294 s was prompt processing.
 
 **Status: research notes, not an upstream-ready change.** The patch carries
 temporary instrumentation and disables flash attention on this device. Read
@@ -161,7 +178,7 @@ Text model, whole graph on the card:
 
 ```bash
 GGML_METAL_DEVICE_NAME="Radeon RX 580" llama-server \
-  -m model.gguf -ngl 999 -lm none -t 1 -c 65536 -ub 256 --metrics
+  -m model.gguf -ngl 999 -lm none -t 1 -c 65536 -ub 256 --temp 0.2 --metrics
 ```
 
 Four flags carry all of the performance:

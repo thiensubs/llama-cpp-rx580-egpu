@@ -2,9 +2,9 @@
 
 A MacBook Pro with an AMD card in a Thunderbolt enclosure, driven at width 64 by
 a backend that assumed 32. Twelve findings, every number measured on that
-machine; the first ten ship as a patch, findings 11-12 are documented
-change-by-change in [What is not done](#what-is-not-done). Nothing was
-hardware-hacked and nothing was submitted upstream.
+machine, shipped as two patches that build and pass their gates from a clean
+checkout ([patches/](patches/README.md)). Nothing was hardware-hacked and nothing
+was submitted upstream.
 
 ![Two models, one agent task: timeline, throughput and memory on an RX 580 eGPU](assets/memory-compare.png)
 
@@ -163,10 +163,12 @@ temporary instrumentation and disables flash attention on this device. Read
 | 12 | [the wide allow-list and Q4_K](#12-the-wide-mat-vec-allow-list-excluded-q4_k-and-its-block-stride-was-4) | a missing type plus a stride of 4 |
 
 Patch: [`patches/rx580-metal-width64.patch`](patches/rx580-metal-width64.patch)
-carries findings 1-10. [`patches/upstream-metal-fixes.patch`](patches/upstream-metal-fixes.patch)
+carries findings 1-10 and
+[`patches/rx580-metal-width64-fa-q4k.patch`](patches/rx580-metal-width64-fa-q4k.patch)
+carries findings 11-12 on top of it. [`patches/upstream-metal-fixes.patch`](patches/upstream-metal-fixes.patch)
 carries only findings 3 and 4, for anyone who wants the two safe ones alone.
-**Apply one or the other, not both.** Findings 11-12 are not in either patch yet -
-see the first two items of [What is not done](#what-is-not-done).
+**Order and prerequisites are in [patches/README.md](patches/README.md)** - the
+second patch does not apply to a bare checkout.
 
 ## How to apply
 
@@ -179,15 +181,20 @@ cd llama.cpp
 git checkout a7af149          # the revision every number here was measured on
 git log --oneline -1          # expect: a7af149a2 cuda : add top-k MoE fusion for 384 experts
 
-# full patch: findings 1-10
+# patch 1: findings 1-10
 curl -L -o rx580.patch \
   https://raw.githubusercontent.com/thiensubs/llama-cpp-rx580-egpu/main/patches/rx580-metal-width64.patch
+# patch 2: findings 11-12, on top of patch 1
+curl -L -o rx580-fa-q4k.patch \
+  https://raw.githubusercontent.com/thiensubs/llama-cpp-rx580-egpu/main/patches/rx580-metal-width64-fa-q4k.patch
 
 # or, only findings 3 and 4:
 #   .../patches/upstream-metal-fixes.patch
 
-git apply --check rx580.patch   # must print nothing
-git apply rx580.patch
+git apply --check rx580.patch        # must print nothing
+git apply         rx580.patch
+git apply --check rx580-fa-q4k.patch # must print nothing
+git apply         rx580-fa-q4k.patch
 
 cmake -B build -DGGML_METAL=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j4 --target llama-server llama-cli test-backend-ops
@@ -699,21 +706,16 @@ Measure throughput with at least 128 tokens. A 4-token reply returns `OK` at
 
 ## What is not done
 
-- **Findings 11-12 are not packaged as a patch.** `rx580-metal-width64.patch`
-  stops at finding 10, so applying it gives you the CPU path for Q4_K and no vec
-  flash attention - the slow state, not the numbers above. Findings 11 and 12
-  name the exact files, functions and lines to change; a patch is work, not a
-  claim, and it is the next thing worth doing here.
-- **q4_0/q4_1/q5_0/q5_1 mat-vec still do not work at width 64.** They route
+- **`q4_0`/`q4_1`/`q5_0`/`q5_1` mat-vec still do not work at width 64.** They route
   through `kernel_mul_mv_ext_q4_f32_impl`. Fixing its hardcoded `nypsg = 32/nxpsg`
   and the host dispatch width (both now width-derived) still leaves `MUL_MAT` at
   0/121, 0/99, 0/63 and 0/56 *when the types are forced onto the allow-list*; that
   is why they stay off it, so today they simply report no cases and take the CPU
   path. The fault is deeper in that kernel's chunk and `deq_t4` addressing -
   finding 12 documents the method that does work.
-- **Temporary instrumentation is still in the patch**: `GGML_SPLIT_DEBUG`,
-  `GGML_METAL_GPU_TIME`, and the `METAL bigbuf` prints. Strip them before
-  proposing anything.
+- **Temporary instrumentation is still in the first patch**: `GGML_SPLIT_DEBUG`,
+  `GGML_METAL_GPU_TIME`, `GGML_METAL_DISP_LOG` and the `METAL bigbuf` prints. The
+  second patch does not carry any of it. Strip them before proposing anything.
 - **`GGML_SPLIT_LOG` is not in the patch.** It found finding 9 and it is worth
   carrying, but it is currently absent, so a split count of 0 proves nothing.
 - **One machine, one model, one llama.cpp commit.** No p95 numbers, no
@@ -725,12 +727,14 @@ Measure throughput with at least 128 tokens. A 4-token reply returns `OK` at
 ## Layout
 
 ```
+patches/README.md                   patch order, prerequisites, what each one excludes
+patches/rx580-metal-width64.patch   findings 1-10
+patches/rx580-metal-width64-fa-q4k.patch  findings 11-12, on top of the one above
+patches/upstream-metal-fixes.patch  findings 3 and 4 only
 findings/measurements.md            the numbers behind every claim above
 findings/moe-on-non-apple-gpus.md   the MUL_MAT_ID gate (finding 8)
 findings/gated-delta-net-width.md   the GDN gate and dispatch (finding 9)
 findings/q8-0-width64.md            the three Q8_0 bugs (finding 10)
-patches/rx580-metal-width64.patch   findings 1-10
-patches/upstream-metal-fixes.patch  findings 3 and 4 only
 assets/width64-port.png|.html       findings 11-12 as a diagram, plus its JSON source
 assets/memory-compare.png           two models on one agent task
 assets/pi-run-*.csv + *.py          the raw samples and generators behind that figure

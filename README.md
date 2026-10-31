@@ -123,7 +123,7 @@ tunables.
 
 ```bash
 GGML_METAL_DEVICE_NAME="Radeon RX 580" llama-server \
-  -m Ling-3.0-tiny-Q6_K.gguf -ngl 999 -lm none -t 1 \
+  -m Ling-3.0-tiny-Q6_K.gguf -ngl 999 -lm none -t 4 -fa 0 \
   -c 32768 -ub 256 -b 512 --temp 0.2 \
   --sleep-idle-seconds 1800 --metrics
 ```
@@ -131,11 +131,12 @@ GGML_METAL_DEVICE_NAME="Radeon RX 580" llama-server \
 | setting | use | measured reason |
 |---|---|---|
 | `--temp` | **0.2** | the only setting that changed correctness: at the 1.0 default, 294 s correct then 61 s wrong; at 0.2, 187 s and 59 s, both correct |
+| `-fa` | **0** | flash attention only has a kernel for batch < 20 here, so a prefill graph runs it on the CPU: one 8,222-token prompt prefills at 22.62 t/s with `-fa auto` and **57.51 t/s** with `-fa 0`. Decode loses 22% at 8k context (22.95 -> 17.87), which agent turns repay in the first prefill |
 | `-ub` | 256 | 128 / 256 / 512 prefill a 4,470-token prompt at 69.6 / 69.5 / 68.7 t/s. No difference, so take the one with VRAM headroom |
 | `--parallel` | leave at the default 4 | 1 slot and 4 slots prefill at 69.5 / 69.6 t/s; more slots keep more idle conversations cached, and the KV for this hybrid model is only 216 MiB |
 | `-c` | 32768 | `n_ctx` is per slot. 65536 needs 5290 MB of buffers on top of 6003 MB of weights |
 | `--sleep-idle-seconds` | 1800 while working, 300 to save RAM | sleeping frees 5.6 GB but drops the prompt cache, and re-prefilling a 15k agent prompt costs about 3.6 min |
-| `-ngl 999 -lm none -t 1` | required | findings 1, 5 and 7 |
+| `-ngl 999 -lm none -t 4` | required | findings 1, 5 and 7; with FA off, `-t 4` measured 1-3% better than `-t 1` on both phases |
 
 The number to plan with: **prefill runs at about 69 t/s**, and an agent turn
 prefills its entire system prompt. At 15k tokens that is 3.6 minutes before the
@@ -651,6 +652,20 @@ Evidence: `test-backend-ops -o FLASH_ATTN_EXT` **2024/2024**, forced-config slic
 `n_kv_max` 257 to 2304, of which 24 reach the vec kernel, all passing at width 64.
 LFM2.5 in a real `pi-local` agent run: 8.1k prefill at 45.6 t/s and
 generation at 37.0 t/s with GPU at 100%, against 16.7 / 6.9 before.
+
+The gate has a sharp edge, and it is worth knowing before enabling it. The vec
+kernels cover `ne01 < 20` only - decode. A prefill graph has no flash-attention
+kernel at all, so with FA enabled the op is placed on the CPU and prefill
+collapses. One 8,222-token prompt on Ling-3.0-tiny, same binary:
+
+| | prefill | decode |
+|---|---|---|
+| `-fa auto` | 22.62 t/s | 22.95 t/s |
+| `-fa 0` | **57.51 t/s** | 17.87 t/s |
+
+**For agent work, pass `-fa 0`.** Prefill is 2.5x faster and an agent turn is
+prefill-dominated; the 22% decode loss only shows up on long answers at 8k+
+context. The launchers in `agents/` do this through an explicit `ULTRA` profile.
 
 ### 12. The wide mat-vec allow-list excluded Q4_K, and its block stride was 4
 

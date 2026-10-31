@@ -1,8 +1,10 @@
 # llama.cpp on an Intel Mac with an RX 580 eGPU
 
 A MacBook Pro with an AMD card in a Thunderbolt enclosure, driven at width 64 by
-a backend that assumed 32. Twelve findings and a patch, every number measured on
-that machine. Nothing was hardware-hacked and nothing was submitted upstream.
+a backend that assumed 32. Twelve findings, every number measured on that
+machine; the first ten ship as a patch, findings 11-12 are documented
+change-by-change in [What is not done](#what-is-not-done). Nothing was
+hardware-hacked and nothing was submitted upstream.
 
 ![Two models, one agent task: timeline, throughput and memory on an RX 580 eGPU](assets/memory-compare.png)
 
@@ -14,7 +16,8 @@ caveats in [Two models on the same agent task](#two-models-on-the-same-agent-tas
 
 ## Does this affect you?
 
-You need all three. Without the third, findings 1-7 still apply and 8-10 do not.
+You need the first two. Without the third, findings 1-7 and 11 still apply and
+8-10 do not; finding 12 applies to any **Q4_K** model regardless of architecture.
 
 1. A **non-Apple GPU** (AMD or Intel), where `has_simdgroup_reduction` is false
 2. llama.cpp at **`a7af149`**
@@ -24,8 +27,10 @@ Symptoms, and where to look first:
 
 | what you see | start at |
 |---|---|
-| the card sits idle while the CPU is pinned | [8](#8-no-moe-model-runs-on-the-gpu-on-a-non-apple-device), [9](#9-gated_delta_net-cannot-run-on-the-gpu-at-all) |
-| 1-3 t/s where the card should do 20+ | [8](#8-no-moe-model-runs-on-the-gpu-on-a-non-apple-device), [9](#9-gated_delta_net-cannot-run-on-the-gpu-at-all) |
+| the card sits idle while the CPU is pinned | [8](#8-no-moe-model-runs-on-the-gpu-on-a-non-apple-device), [9](#9-gated_delta_net-cannot-run-on-the-gpu-at-all), [12](#12-the-wide-mat-vec-allow-list-excluded-q4_k-and-its-block-stride-was-4) |
+| 1-3 t/s where the card should do 20+ | [8](#8-no-moe-model-runs-on-the-gpu-on-a-non-apple-device), [9](#9-gated_delta_net-cannot-run-on-the-gpu-at-all), [12](#12-the-wide-mat-vec-allow-list-excluded-q4_k-and-its-block-stride-was-4) |
+| prefill collapses, decode is fine | [11](#11-flash-attention-at-width-64-the-row-width-two-fold-ladders-and-the-reduce) |
+| `-fa on` makes it slower than `-fa off` | [11](#11-flash-attention-at-width-64-the-row-width-two-fold-ladders-and-the-reduce) |
 | model "loads", VRAM nearly empty, RAM full | [8](#8-no-moe-model-runs-on-the-gpu-on-a-non-apple-device) |
 | right speed, wrong text | [3](#3-use_concurrency-races-on-non-apple-gpus), [10](#10-the-q8_0-matvec-assumed-32-lanes-in-three-places) |
 | a quantised file slower than f16 | [7](#7-quantisation-is-slower-than-f16-on-this-card) - expected, not a bug |
@@ -154,11 +159,14 @@ temporary instrumentation and disables flash attention on this device. Read
 | 8 | [MoE never reaches the GPU](#8-no-moe-model-runs-on-the-gpu-on-a-non-apple-device) | `MUL_MAT_ID` refused outright |
 | 9 | [GATED_DELTA_NET on the CPU](#9-gated_delta_net-cannot-run-on-the-gpu-at-all) | the gate, not the kernel, was the blocker |
 | 10 | [Q8_0 assumed 32 lanes](#10-the-q8_0-matvec-assumed-32-lanes-in-three-places) | two lane bugs plus a missing allow-list entry |
+| 11 | [flash attention at width 64](#11-flash-attention-at-width-64-the-row-width-two-fold-ladders-and-the-reduce) | row width, two fold ladders, one reduce |
+| 12 | [the wide allow-list and Q4_K](#12-the-wide-mat-vec-allow-list-excluded-q4_k-and-its-block-stride-was-4) | a missing type plus a stride of 4 |
 
 Patch: [`patches/rx580-metal-width64.patch`](patches/rx580-metal-width64.patch)
-carries all ten fixes. [`patches/upstream-metal-fixes.patch`](patches/upstream-metal-fixes.patch)
+carries findings 1-10. [`patches/upstream-metal-fixes.patch`](patches/upstream-metal-fixes.patch)
 carries only findings 3 and 4, for anyone who wants the two safe ones alone.
-**Apply one or the other, not both.**
+**Apply one or the other, not both.** Findings 11-12 are not in either patch yet -
+see the first two items of [What is not done](#what-is-not-done).
 
 ## How to apply
 
@@ -188,9 +196,11 @@ cmake --build build -j4 --target llama-server llama-cli test-backend-ops
 If `git apply --check` prints anything, stop: the checkout is not `a7af149` and
 the result will be the slow state rather than a partial fix.
 
-Then run the gates in [Reproduce](#reproduce). The three that matter are
-`MUL_MAT_ID` 224/224, `type_a=q8_0` 116/116, and a `-lv 4` load that shows the
-weights in `MTL0_Private` instead of on the CPU.
+Then run the gates in [Reproduce](#reproduce). The three that matter for the
+patch are `MUL_MAT_ID` 224/224, `type_a=q8_0` 116/116, and a `-lv 4` load that
+shows the weights in `MTL0_Private` instead of on the CPU. Findings 11-12 add two
+more, and they are the ones a wrong lane mapping cannot fake:
+`FLASH_ATTN_EXT` 2024/2024 and `MUL_MAT, MUL_MAT_ID` 1384/1384 across all types.
 
 ## Headline numbers
 
@@ -630,7 +640,9 @@ same rule, so host and kernel cannot drift. The tuned `(Q,NE)` variants stay
 inside `#if N_SIMDWIDTH == 32` — their explicit NE is illegal at 64 lanes.
 
 Evidence: `test-backend-ops -o FLASH_ATTN_EXT` **2024/2024**, forced-config slice
-**240/240**. LFM2.5 in a real `pi-local` agent run: 8.1k prefill at 45.6 t/s and
+**240/240**. That count includes the mask-bearing sparse path - 39 cases with
+`n_kv_max` 257 to 2304, of which 24 reach the vec kernel, all passing at width 64.
+LFM2.5 in a real `pi-local` agent run: 8.1k prefill at 45.6 t/s and
 generation at 37.0 t/s with GPU at 100%, against 16.7 / 6.9 before.
 
 ### 12. The wide mat-vec allow-list excluded Q4_K, and its block stride was 4
@@ -687,12 +699,18 @@ Measure throughput with at least 128 tokens. A 4-token reply returns `OK` at
 
 ## What is not done
 
+- **Findings 11-12 are not packaged as a patch.** `rx580-metal-width64.patch`
+  stops at finding 10, so applying it gives you the CPU path for Q4_K and no vec
+  flash attention - the slow state, not the numbers above. Findings 11 and 12
+  name the exact files, functions and lines to change; a patch is work, not a
+  claim, and it is the next thing worth doing here.
 - **q4_0/q4_1/q5_0/q5_1 mat-vec still do not work at width 64.** They route
   through `kernel_mul_mv_ext_q4_f32_impl`. Fixing its hardcoded `nypsg = 32/nxpsg`
   and the host dispatch width (both now width-derived) still leaves `MUL_MAT` at
-  0/121, 0/99, 0/63 and 0/56, so the fault is deeper in that kernel's chunk and
-  `deq_t4` addressing. They stay off the wide allow-list - CPU path - rather than
-  ship a wrong result, and finding 12 documents the method that does work.
+  0/121, 0/99, 0/63 and 0/56 *when the types are forced onto the allow-list*; that
+  is why they stay off it, so today they simply report no cases and take the CPU
+  path. The fault is deeper in that kernel's chunk and `deq_t4` addressing -
+  finding 12 documents the method that does work.
 - **Temporary instrumentation is still in the patch**: `GGML_SPLIT_DEBUG`,
   `GGML_METAL_GPU_TIME`, and the `METAL bigbuf` prints. Strip them before
   proposing anything.
@@ -711,8 +729,11 @@ findings/measurements.md            the numbers behind every claim above
 findings/moe-on-non-apple-gpus.md   the MUL_MAT_ID gate (finding 8)
 findings/gated-delta-net-width.md   the GDN gate and dispatch (finding 9)
 findings/q8-0-width64.md            the three Q8_0 bugs (finding 10)
-patches/rx580-metal-width64.patch   all ten fixes
+patches/rx580-metal-width64.patch   findings 1-10
 patches/upstream-metal-fixes.patch  findings 3 and 4 only
+assets/width64-port.png|.html       findings 11-12 as a diagram, plus its JSON source
+assets/memory-compare.png           two models on one agent task
+assets/pi-run-*.csv + *.py          the raw samples and generators behind that figure
 repro/simdprobe.m                   simd width and primitive correctness per device
 repro/bwprobe.m                     VRAM streaming bandwidth per device
 agents/                             launchers and clients used to drive the server

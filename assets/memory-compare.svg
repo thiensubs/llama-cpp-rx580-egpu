@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="940" viewBox="0 0 1560 940" font-family="-apple-system, Helvetica, Arial, sans-serif">
+<rect width="1560" height="940" fill="#ffffff"/>
+<text x="232" y="44" font-size="22" font-weight="700" fill="#16181d">Two real pi-local runs on an RX 580 eGPU</text>
+<text x="232" y="68" font-size="13" fill="#6b7280">same task, same harness, same flags, one server at a time · bars: completed runs · memory traces: sampled repeats</text>
+<text x="232" y="92" font-size="13" font-weight="600" fill="#16181d">Timeline to done — prefill (grey) then generation (colour)</text>
+<line x1="232.0" y1="104" x2="232.0" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="232.0" y="364" font-size="11" fill="#6b7280" text-anchor="middle">0s</text>
+<line x1="332.7" y1="104" x2="332.7" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="332.7" y="364" font-size="11" fill="#6b7280" text-anchor="middle">60s</text>
+<line x1="433.5" y1="104" x2="433.5" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="433.5" y="364" font-size="11" fill="#6b7280" text-anchor="middle">120s</text>
+<line x1="534.2" y1="104" x2="534.2" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="534.2" y="364" font-size="11" fill="#6b7280" text-anchor="middle">180s</text>
+<line x1="634.9" y1="104" x2="634.9" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="634.9" y="364" font-size="11" fill="#6b7280" text-anchor="middle">240s</text>
+<line x1="735.6" y1="104" x2="735.6" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="735.6" y="364" font-size="11" fill="#6b7280" text-anchor="middle">300s</text>
+<line x1="836.4" y1="104" x2="836.4" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="836.4" y="364" font-size="11" fill="#6b7280" text-anchor="middle">360s</text>
+<line x1="937.1" y1="104" x2="937.1" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="937.1" y="364" font-size="11" fill="#6b7280" text-anchor="middle">420s</text>
+<line x1="1037.8" y1="104" x2="1037.8" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="1037.8" y="364" font-size="11" fill="#6b7280" text-anchor="middle">480s</text>
+<line x1="1138.5" y1="104" x2="1138.5" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="1138.5" y="364" font-size="11" fill="#6b7280" text-anchor="middle">540s</text>
+<line x1="1239.3" y1="104" x2="1239.3" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="1239.3" y="364" font-size="11" fill="#6b7280" text-anchor="middle">600s</text>
+<line x1="1340.0" y1="104" x2="1340.0" y2="346" stroke="#f4f5f7" stroke-width="1"/>
+<text x="1340.0" y="364" font-size="11" fill="#6b7280" text-anchor="middle">660s</text>
+<text x="220" y="142" font-size="12.5" font-weight="600" fill="#1f9d55" text-anchor="end">LFM2.5-8B-A1B Q4_K_M</text>
+<rect x="232.0" y="130" width="298.9" height="28" fill="#c9ced6" stroke="#b9bfc8" stroke-width="0.8"/>
+<rect x="530.9" y="130" width="19.9" height="28" fill="#1f9d55" opacity="0.9"/>
+<text x="238.0" y="149" font-size="11" fill="#3c424b">8,122 tok · 46 t/s</text>
+<text x="555.9" y="149" font-size="10.5" fill="#1f9d55">441 tok · 37 t/s</text>
+<rect x="550.9" y="130" width="652.5" height="28" fill="#c9ced6" stroke="#b9bfc8" stroke-width="0.8"/>
+<rect x="1203.4" y="130" width="41.5" height="28" fill="#1f9d55" opacity="0.9"/>
+<text x="556.9" y="149" font-size="11" fill="#3c424b">9,439 tok · 24 t/s</text>
+<text x="1249.9" y="149" font-size="10.5" fill="#1f9d55">882 tok · 36 t/s</text>
+<line x1="1244.9" y1="122" x2="1244.9" y2="166" stroke="#1f9d55" stroke-width="1.4" stroke-dasharray="4 4"/>
+<text x="1250.9" y="176" font-size="11" font-weight="600" fill="#1f9d55">done 605 s</text>
+<text x="220" y="276" font-size="12.5" font-weight="600" fill="#6d4aff" text-anchor="end">Ling-3.0-tiny Q6K-hq8</text>
+<rect x="232.0" y="264" width="254.3" height="28" fill="#c9ced6" stroke="#b9bfc8" stroke-width="0.8"/>
+<rect x="486.3" y="264" width="5.4" height="28" fill="#6d4aff" opacity="0.9"/>
+<text x="238.0" y="283" font-size="11" fill="#3c424b">8,213 tok · 54 t/s</text>
+<text x="496.7" y="283" font-size="10.5" fill="#6d4aff">55 tok · 17 t/s</text>
+<rect x="491.7" y="264" width="255.2" height="28" fill="#c9ced6" stroke="#b9bfc8" stroke-width="0.8"/>
+<rect x="746.9" y="264" width="52.7" height="28" fill="#6d4aff" opacity="0.9"/>
+<text x="497.7" y="283" font-size="11" fill="#3c424b">5,211 tok · 34 t/s</text>
+<text x="804.6" y="283" font-size="10.5" fill="#6d4aff">427 tok · 14 t/s</text>
+<line x1="799.6" y1="256" x2="799.6" y2="300" stroke="#6d4aff" stroke-width="1.4" stroke-dasharray="4 4"/>
+<text x="805.6" y="310" font-size="11" font-weight="600" fill="#6d4aff">done 340 s</text>
+<text x="232" y="404" font-size="13" font-weight="600" fill="#16181d">Throughput per model — prefill and decode, both turns</text>
+<text x="222" y="428" font-size="11" fill="#16181d" text-anchor="end">LFM2.5 · turn 1</text>
+<rect x="232" y="416" width="811.9" height="16" fill="#1f9d55" opacity="0.45" rx="2"/>
+<text x="1051.9" y="428" font-size="11" fill="#6b7280">45.6 t/s</text>
+<line x1="232" y1="424.0" x2="232" y2="424.0" stroke="#e6e8eb"/>
+<text x="222" y="453" font-size="11" fill="#16181d" text-anchor="end">LFM2.5 · turn 1 gen</text>
+<rect x="232" y="441" width="660.8" height="16" fill="#1f9d55" opacity="1.0" rx="2"/>
+<text x="900.8" y="453" font-size="11" fill="#6b7280">37.1 t/s</text>
+<line x1="232" y1="449.0" x2="232" y2="449.0" stroke="#e6e8eb"/>
+<text x="222" y="478" font-size="11" fill="#16181d" text-anchor="end">LFM2.5 · turn 2</text>
+<rect x="232" y="466" width="432.3" height="16" fill="#1f9d55" opacity="0.45" rx="2"/>
+<text x="672.3" y="478" font-size="11" fill="#6b7280">24.3 t/s</text>
+<line x1="232" y1="474.0" x2="232" y2="474.0" stroke="#e6e8eb"/>
+<text x="222" y="503" font-size="11" fill="#16181d" text-anchor="end">LFM2.5 · turn 2 gen</text>
+<rect x="232" y="491" width="634.3" height="16" fill="#1f9d55" opacity="1.0" rx="2"/>
+<text x="874.3" y="503" font-size="11" fill="#6b7280">35.6 t/s</text>
+<line x1="232" y1="499.0" x2="232" y2="499.0" stroke="#e6e8eb"/>
+<text x="222" y="528" font-size="11" fill="#16181d" text-anchor="end">Ling · turn 1</text>
+<rect x="232" y="516" width="965.0" height="16" fill="#6d4aff" opacity="0.45" rx="2"/>
+<text x="1205.0" y="528" font-size="11" fill="#6b7280">54.2 t/s</text>
+<line x1="232" y1="524.0" x2="232" y2="524.0" stroke="#e6e8eb"/>
+<text x="222" y="553" font-size="11" fill="#16181d" text-anchor="end">Ling · turn 1 gen</text>
+<rect x="232" y="541" width="305.9" height="16" fill="#6d4aff" opacity="1.0" rx="2"/>
+<text x="545.9" y="553" font-size="11" fill="#6b7280">17.2 t/s</text>
+<line x1="232" y1="549.0" x2="232" y2="549.0" stroke="#e6e8eb"/>
+<text x="222" y="578" font-size="11" fill="#16181d" text-anchor="end">Ling · turn 2</text>
+<rect x="232" y="566" width="610.2" height="16" fill="#6d4aff" opacity="0.45" rx="2"/>
+<text x="850.2" y="578" font-size="11" fill="#6b7280">34.3 t/s</text>
+<line x1="232" y1="574.0" x2="232" y2="574.0" stroke="#e6e8eb"/>
+<text x="222" y="603" font-size="11" fill="#16181d" text-anchor="end">Ling · turn 2 gen</text>
+<rect x="232" y="591" width="242.1" height="16" fill="#6d4aff" opacity="1.0" rx="2"/>
+<text x="482.1" y="603" font-size="11" fill="#6b7280">13.6 t/s</text>
+<line x1="232" y1="599.0" x2="232" y2="599.0" stroke="#e6e8eb"/>
+<text x="232" y="658" font-size="13" font-weight="600" fill="#16181d">Memory over the run — GPU VRAM used (thick) and host RSS (thin)</text>
+<line x1="232" y1="820.0" x2="1340" y2="820.0" stroke="#e6e8eb" stroke-width="1"/>
+<text x="222" y="824.0" font-size="11" fill="#6b7280" text-anchor="end">0</text>
+<line x1="232" y1="782.5" x2="1340" y2="782.5" stroke="#e6e8eb" stroke-width="1"/>
+<text x="222" y="786.5" font-size="11" fill="#6b7280" text-anchor="end">2,250</text>
+<line x1="232" y1="745.0" x2="1340" y2="745.0" stroke="#e6e8eb" stroke-width="1"/>
+<text x="222" y="749.0" font-size="11" fill="#6b7280" text-anchor="end">4,500</text>
+<line x1="232" y1="707.5" x2="1340" y2="707.5" stroke="#e6e8eb" stroke-width="1"/>
+<text x="222" y="711.5" font-size="11" fill="#6b7280" text-anchor="end">6,750</text>
+<line x1="232" y1="670.0" x2="1340" y2="670.0" stroke="#e6e8eb" stroke-width="1"/>
+<text x="222" y="674.0" font-size="11" fill="#6b7280" text-anchor="end">9,000</text>
+<text x="222" y="650" font-size="10.5" fill="#6b7280" text-anchor="end">MB</text>
+<text x="232.0" y="838" font-size="11" fill="#6b7280" text-anchor="middle">0</text>
+<text x="332.7" y="838" font-size="11" fill="#6b7280" text-anchor="middle">60</text>
+<text x="433.5" y="838" font-size="11" fill="#6b7280" text-anchor="middle">120</text>
+<text x="534.2" y="838" font-size="11" fill="#6b7280" text-anchor="middle">180</text>
+<text x="634.9" y="838" font-size="11" fill="#6b7280" text-anchor="middle">240</text>
+<text x="735.6" y="838" font-size="11" fill="#6b7280" text-anchor="middle">300</text>
+<text x="836.4" y="838" font-size="11" fill="#6b7280" text-anchor="middle">360</text>
+<text x="937.1" y="838" font-size="11" fill="#6b7280" text-anchor="middle">420</text>
+<text x="1037.8" y="838" font-size="11" fill="#6b7280" text-anchor="middle">480</text>
+<text x="1138.5" y="838" font-size="11" fill="#6b7280" text-anchor="middle">540</text>
+<text x="1239.3" y="838" font-size="11" fill="#6b7280" text-anchor="middle">600</text>
+<text x="1340.0" y="838" font-size="11" fill="#6b7280" text-anchor="middle">660</text>
+<path d="M 233.0 818.8 L 240.6 818.8 L 249.1 759.1 L 257.3 734.3 L 265.7 719.3 L 274.1 719.3 L 282.5 719.3 L 290.9 719.3 L 299.3 719.3 L 307.7 719.3 L 316.1 719.3 L 324.3 719.3 L 332.6 719.3 L 341.0 719.3 L 349.5 719.3 L 357.9 719.3 L 366.6 719.3 L 375.4 719.3 L 384.1 719.3 L 392.8 719.3 L 401.4 719.3 L 410.6 719.3 L 419.0 719.3 L 427.4 719.3 L 436.0 719.3 L 444.5 719.3 L 453.1 719.3 L 461.5 719.3 L 470.1 719.3 L 478.6 719.3 L 487.0 719.3 L 495.6 719.3 L 504.1 719.3 L 512.5 719.3 L 521.1 719.3 L 529.6 719.3 L 538.2 719.3 L 546.8 719.3 L 555.5 719.3 L 564.2 719.3 L 572.8 719.3 L 581.4 719.3 L 589.9 719.3 L 598.5 719.3 L 606.7 719.3 L 615.1 719.3 L 623.7 719.3 L 632.2 719.3 L 640.8 719.3 L 649.2 719.3 L 657.7 719.3 L 666.3 719.3 L 674.9 719.3 L 683.4 719.3 L 692.0 719.3 L 700.4 719.3 L 708.9 719.3 L 717.5 719.3 L 726.1 719.3 L 734.6 719.3 L 743.2 719.3 L 751.6 719.3 L 760.1 719.3 L 768.7 719.3 L 777.3 719.3 L 785.5 719.3 L 794.1 719.3 L 802.6 719.3 L 811.2 719.3 L 820.1 719.3 L 828.5 719.3 L 837.0 719.3 L 845.6 719.3 L 854.2 719.3 L 862.7 719.3 L 871.1 719.3 L 879.7 719.3 L 888.2 719.3 L 896.8 719.3 L 905.4 719.3 L 913.9 719.3 L 922.7 719.3 L 931.4 719.3 L 939.8 719.3 L 948.3 719.3 L 956.7 719.3 L 965.3 719.3 L 973.9 719.3 L 982.4 719.3 L 991.0 719.3 L 999.4 719.3 L 1007.9 719.3 L 1016.5 719.3 L 1024.9 719.3 L 1033.5 719.3 L 1042.0 719.3 L 1050.6 719.3 L 1059.1 719.3 L 1067.7 719.3 L 1076.3 719.3 L 1084.7 719.3 L 1093.2 719.3 L 1101.8 719.3 L 1110.3 719.3 L 1118.9 719.3 L 1127.5 719.3 L 1135.9 719.3 L 1144.4 719.3 L 1153.0 719.3 L 1161.5 719.3 L 1170.1 719.3 L 1178.7 719.3 L 1187.2 719.3 L 1195.8 719.3 L 1204.2 719.3 L 1212.6 719.3 L 1221.1 719.3 L 1229.7 719.3 L 1238.3 719.3 L 1246.8 719.3 L 1255.4 719.3 L 1263.8 719.3 L 1272.3 719.3 L 1281.1 719.3 L 1289.6 719.3 L 1298.7 719.3 L 1307.6 719.3 L 1316.5 719.3 L 1325.2 719.3 L 1334.3 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3 L 1340.0 719.3" fill="none" stroke="#1f9d55" stroke-width="2.6" opacity="1.0"/>
+<path d="M 249.1 813.6 L 257.3 816.5 L 265.7 813.3 L 274.1 813.3 L 282.5 813.3 L 290.9 813.3 L 299.3 813.3 L 307.7 813.3 L 316.1 813.2 L 324.3 813.2 L 332.6 813.2 L 341.0 813.2 L 349.5 813.2 L 357.9 813.2 L 366.6 813.2 L 375.4 813.2 L 384.1 813.2 L 392.8 813.2 L 401.4 813.1 L 410.6 813.1 L 419.0 813.1 L 427.4 813.1 L 436.0 813.1 L 444.5 813.1 L 453.1 813.1 L 461.5 813.1 L 470.1 813.1 L 478.6 813.1 L 487.0 813.1 L 495.6 813.1 L 504.1 813.1 L 512.5 813.0 L 521.1 813.0 L 529.6 813.0 L 538.2 813.0 L 546.8 813.0 L 555.5 813.0 L 564.2 813.0 L 572.8 813.1 L 581.4 813.1 L 589.9 813.1 L 598.5 813.1 L 606.7 813.1 L 615.1 813.1 L 623.7 813.1 L 632.2 813.1 L 640.8 813.1 L 649.2 813.1 L 657.7 813.1 L 666.3 813.1 L 674.9 813.1 L 683.4 813.1 L 692.0 813.1 L 700.4 813.1 L 708.9 813.0 L 717.5 813.0 L 726.1 813.0 L 734.6 813.0 L 743.2 813.0 L 751.6 813.0 L 760.1 813.0 L 768.7 813.0 L 777.3 813.0 L 785.5 813.0 L 794.1 813.0 L 802.6 813.0 L 811.2 813.0 L 820.1 813.0 L 828.5 813.0 L 837.0 813.0 L 845.6 813.0 L 854.2 813.0 L 862.7 813.0 L 871.1 813.0 L 879.7 812.9 L 888.2 812.9 L 896.8 812.9 L 905.4 812.9 L 913.9 812.9 L 922.7 812.9 L 931.4 812.9 L 939.8 812.9 L 948.3 812.9 L 956.7 812.9 L 965.3 812.9 L 973.9 812.9 L 982.4 812.9 L 991.0 812.9 L 999.4 812.9 L 1007.9 812.9 L 1016.5 812.9 L 1024.9 812.9 L 1033.5 812.9 L 1042.0 812.9 L 1050.6 812.9 L 1059.1 812.9 L 1067.7 812.9 L 1076.3 812.8 L 1084.7 812.8 L 1093.2 812.8 L 1101.8 812.8 L 1110.3 812.8 L 1118.9 812.8 L 1127.5 812.8 L 1135.9 812.8 L 1144.4 812.8 L 1153.0 812.8 L 1161.5 812.8 L 1170.1 812.8 L 1178.7 812.8 L 1187.2 812.8 L 1195.8 812.8 L 1204.2 812.8 L 1212.6 812.8 L 1221.1 812.8 L 1229.7 812.8 L 1238.3 812.8 L 1246.8 812.8 L 1255.4 812.8 L 1263.8 812.8 L 1272.3 812.8 L 1281.1 812.8 L 1289.6 812.8 L 1298.7 812.8 L 1307.6 812.7 L 1316.5 812.7 L 1325.2 812.7 L 1334.3 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.7 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6 L 1340.0 812.6" fill="none" stroke="#1f9d55" stroke-width="1.4" opacity="0.75" stroke-dasharray="4 3"/>
+<path d="M 233.2 816.7 L 241.6 759.4 L 250.3 699.6 L 258.7 698.1 L 267.3 698.1 L 275.8 698.1 L 284.2 698.1 L 292.6 698.1 L 301.0 698.1 L 309.6 698.1 L 318.0 698.1 L 326.2 698.1 L 334.6 698.1 L 342.8 698.1 L 351.2 698.1 L 359.6 698.1 L 368.0 698.1 L 376.4 698.1 L 384.9 698.1 L 393.3 698.1 L 401.9 698.1 L 410.3 698.1 L 418.8 698.1 L 427.4 698.1 L 435.8 698.1 L 444.4 698.1 L 452.9 698.1 L 461.3 698.1 L 469.9 698.1 L 478.4 698.1 L 487.0 698.1 L 495.6 698.1 L 504.0 698.1 L 512.5 698.1 L 520.9 698.1 L 529.3 698.1 L 537.9 698.1 L 546.3 698.1 L 554.8 698.1 L 563.4 698.1 L 572.0 698.1 L 580.9 698.1 L 589.4 698.1 L 598.3 698.1 L 606.9 698.1 L 615.4 698.1 L 623.7 698.1 L 632.2 698.1 L 640.6 698.1 L 649.2 698.1 L 657.7 698.1 L 666.3 698.1 L 674.7 698.1 L 683.1 698.1 L 691.7 698.1 L 700.2 698.1 L 708.6 698.1 L 717.2 698.1 L 725.7 698.1 L 734.1 698.1 L 742.5 698.1 L 751.1 698.1 L 759.6 698.1 L 768.0 698.1 L 776.6 698.1 L 785.2 698.1 L 793.7 698.1 L 802.1 698.1 L 810.7 698.1 L 819.6 698.1 L 828.1 698.1 L 836.5 698.1 L 845.1 698.1 L 853.5 698.1 L 862.0 698.1" fill="none" stroke="#6d4aff" stroke-width="2.6" opacity="1.0"/>
+<path d="M 241.6 816.9 L 250.3 816.8 L 258.7 812.0 L 267.3 811.9 L 275.8 811.9 L 284.2 811.9 L 292.6 811.9 L 301.0 811.9 L 309.6 811.9 L 318.0 811.9 L 326.2 811.9 L 334.6 811.9 L 342.8 811.8 L 351.2 811.8 L 359.6 811.8 L 368.0 811.8 L 376.4 811.8 L 384.9 811.8 L 393.3 811.8 L 401.9 811.8 L 410.3 811.8 L 418.8 811.8 L 427.4 811.8 L 435.8 811.8 L 444.4 811.8 L 452.9 811.8 L 461.3 811.8 L 469.9 811.8 L 478.4 811.7 L 487.0 811.7 L 495.6 811.7 L 504.0 811.7 L 512.5 811.7 L 520.9 811.7 L 529.3 811.7 L 537.9 811.7 L 546.3 811.7 L 554.8 811.7 L 563.4 811.7 L 572.0 811.7 L 580.9 811.7 L 589.4 811.7 L 598.3 811.7 L 606.9 811.7 L 615.4 811.7 L 623.7 811.7 L 632.2 811.7 L 640.6 811.7 L 649.2 811.7 L 657.7 811.7 L 666.3 811.7 L 674.7 811.6 L 683.1 811.6 L 691.7 811.6 L 700.2 811.6 L 708.6 811.6 L 717.2 811.6 L 725.7 811.6 L 734.1 811.6 L 742.5 811.6 L 751.1 811.6 L 759.6 811.6 L 768.0 811.6 L 776.6 811.3 L 785.2 811.0 L 793.7 811.0 L 802.1 812.0 L 810.7 812.0 L 819.6 812.0 L 828.1 812.0 L 836.5 812.0 L 845.1 812.0 L 853.5 812.0 L 862.0 812.0" fill="none" stroke="#6d4aff" stroke-width="1.4" opacity="0.75" stroke-dasharray="4 3"/>
+<text x="1366" y="108" font-size="12" font-weight="700" fill="#16181d">measured</text>
+<circle cx="1371" cy="126" r="5" fill="#1f9d55"/>
+<text x="1384" y="130" font-size="12.5" font-weight="600" fill="#16181d">LFM2.5-8B-A1B Q4_K_M</text>
+<text x="1384" y="147" font-size="11" fill="#6b7280">wall 605 s</text>
+<text x="1384" y="162" font-size="11" fill="#6b7280">GPU busy 32% (resident)</text>
+<text x="1384" y="177" font-size="11" fill="#6b7280">peak VRAM 6042 MB</text>
+<text x="1384" y="192" font-size="11" fill="#6b7280">peak RSS 445 MB</text>
+<circle cx="1371" cy="215" r="5" fill="#6d4aff"/>
+<text x="1384" y="219" font-size="12.5" font-weight="600" fill="#16181d">Ling-3.0-tiny Q6K-hq8</text>
+<text x="1384" y="236" font-size="11" fill="#6b7280">wall 340 s</text>
+<text x="1384" y="251" font-size="11" fill="#6b7280">GPU busy 66% (resident)</text>
+<text x="1384" y="266" font-size="11" fill="#6b7280">peak VRAM 7313 MB</text>
+<text x="1384" y="281" font-size="11" fill="#6b7280">peak RSS 542 MB</text>
+<text x="1366" y="312" font-size="11" fill="#6b7280">VRAM = inUseVidMemoryBytes</text>
+<text x="1366" y="328" font-size="11" fill="#6b7280">RSS = llama-server resident</text>
+<text x="1366" y="344" font-size="11" fill="#6b7280">sampled every ~4 s</text>
+<text x="1366" y="366" font-size="11" fill="#6b7280">for contrast: RSS was 2.97 GB</text>
+<text x="1366" y="382" font-size="11" fill="#6b7280">while Q4_K still ran on the CPU</text>
+</svg>

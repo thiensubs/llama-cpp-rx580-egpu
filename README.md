@@ -1,8 +1,16 @@
 # llama.cpp on an Intel Mac with an RX 580 eGPU
 
 A MacBook Pro with an AMD card in a Thunderbolt enclosure, driven at width 64 by
-a backend that assumed 32. Ten findings and a patch, every number measured on
+a backend that assumed 32. Twelve findings and a patch, every number measured on
 that machine. Nothing was hardware-hacked and nothing was submitted upstream.
+
+![Two models, one agent task: timeline, throughput and memory on an RX 580 eGPU](assets/memory-compare.png)
+
+Two models, the same agent task, the same eGPU - timeline to done, per-turn
+throughput, and what each one costs in VRAM. LFM2.5-8B-A1B finishes in 605 s
+against Ling-3.0-tiny's 340 s, but it decodes 2-3x faster while Ling prefills
+faster; memory separates them cleanly at 6.0 GB versus 7.3 GB. Full detail and
+caveats in [Two models on the same agent task](#two-models-on-the-same-agent-task).
 
 ## Does this affect you?
 
@@ -77,6 +85,30 @@ Two facts survive the correction:
 - **Generation lands near 10.7 t/s, not the 19.7 t/s benchmark.** Agent turns are
   a few hundred tokens each, so per-turn fixed cost dominates. A cold first turn
   is prefill-bound: 162 s of that 294 s was prompt processing.
+
+### Two models on the same agent task
+
+The figure at the top of this page, in detail. Same task, same harness, same
+flags, one server at a time. The bars come from
+completed runs (two turns each); the memory traces are sampled repeats of the
+same task, because a sampled run and a clean run are not the same run. The raw
+samples and the generator sit next to the figure: `assets/pi-run-*.csv`,
+`assets/sampler.py`, `assets/compare_chart.py`.
+
+What it says, and what it does not:
+
+- LFM2.5-8B-A1B finishes in **605 s** against Ling's **340 s**, and the difference
+  is not decode: LFM2.5 runs 35-37 t/s decode against Ling's 14-17, while Ling
+  prefills at 54 t/s against LFM2.5's 24-46. LFM2.5 is a reasoning-only model, so
+  every turn also pays its chain of thought; this server runs Ling with
+  `enable_thinking: false`.
+- Memory separates them cleanly: **6.0 GB** of VRAM for LFM2.5 versus **7.3 GB** for
+  Ling at 128k context, and host RSS stays under 550 MB for both - the weights are
+  really in VRAM now ([finding 12](#12-the-wide-mat-vec-allow-list-excluded-q4_k-and-its-block-stride-was-4)).
+  Before that fix the same LFM2.5 server held 2.97 GB of host RAM with the card idle.
+- Single runs on one machine, and the Ling sample landed in a slower patch:
+  25.6 t/s prefill at 8.2k there, against 54.2 t/s for the archived run of the same
+  task. Treat the ordering as directional, not as a benchmark.
 
 ## Best config for a real agent
 
@@ -558,6 +590,74 @@ Byte-identical greedy output is what separated a reordering from a bug, and here
 it agreed with the gate. Write-up:
 [findings/q8-0-width64.md](findings/q8-0-width64.md).
 
+![Width-64 port: five hardcoded 32s, one derived rule](assets/width64-port.png)
+
+*Findings 11 and 12 at a glance — the five hardcoded-32 constants, the width-derived rule that replaced each, and the measured before/after. Interactive version: [assets/width64-port.html](assets/width64-port.html).*
+
+### 11. Flash attention at width 64: the row width, two fold ladders and the reduce
+
+`-fa on` on a non-Apple GPU used to move the whole attention op to the CPU. The
+model still produced tokens, so the symptom is not an error: prefill collapses
+and the card idles while one core is pinned. LFM2.5 measured 16.7 t/s prefill
+with GPU activity at 0% in 9 of 11 samples and `llama-server` at 83-98% CPU.
+
+Four causes, all in `kernels/fa_vec_*` plus `ggml-metal-ops.cpp`:
+
+1. Every type file fenced its instantiations behind `#if N_SIMDWIDTH == 32`, so
+   at width 64 no vec kernel existed at all.
+2. `C`, the score-row width, must equal the simdgroup width:
+   `ss[qq*C + NE*tx + ty]` is indexed with `NE*tx + ty < NW`, with `tx = tiisg%NL`
+   and `NL = NW/NE`. `C` was the compile-time `OP_FLASH_ATTN_EXT_VEC_NCPSG = 32`.
+   The default is now `N_SIMDWIDTH`.
+3. Two fold ladders encoded the 32-lane identity `NE <= 32/d` as the guard for
+   distance `d`. That is `d <= NL` only when `NW == 32`, so at width 64 with
+   `NE = 4, NL = 16` the QK fold stopped at distance 4 and summed 8 of 16
+   partials: **every score was the dot product over half the head**. The output
+   fold had the same shape. Both now use the NL-relative distances
+   (`NW/2 .. NW/32` for O, `1 .. NL/2` for QK), which reproduces the 32-lane set
+   exactly: `NE = 4 -> {16, 8}` for O, `{4, 2, 1}` for QK.
+4. `kernel_flash_attn_ext_vec_reduce` maps one workgroup partial per *lane* and
+   was dispatched with `32*nwg` threads. At width 64 the upper lanes read the
+   next row of `ss`, poisoned `simd_max`/`simd_sum`, and only half of the output
+   elements were written. It now runs one simdgroup of `nw` threads with a
+   neutral value for `iwg >= NWG`.
+
+One path instead of one list per width: `FA_VEC_NE(DK, DV)` in
+`fa_vec_common.metal` derives `NE` from the simdgroup width (the largest
+power-of-two `NL` dividing both `dk/4` and `dv/4`), and every type instantiates
+its baseline entries with it. `ggml_metal_tuning::fa_vec_baseline_ne` mirrors the
+same rule, so host and kernel cannot drift. The tuned `(Q,NE)` variants stay
+inside `#if N_SIMDWIDTH == 32` — their explicit NE is illegal at 64 lanes.
+
+Evidence: `test-backend-ops -o FLASH_ATTN_EXT` **2024/2024**, forced-config slice
+**240/240**. LFM2.5 in a real `pi-local` agent run: 8.1k prefill at 45.6 t/s and
+generation at 37.0 t/s with GPU at 100%, against 16.7 / 6.9 before.
+
+### 12. The wide mat-vec allow-list excluded Q4_K, and its block stride was 4
+
+A Q4_K model on this card ran every expert and shortconv matmul on the CPU while
+its weights sat in VRAM: `GGML_SCHED_DEBUG=2` showed 612 `MUL_MAT` and 748
+`MUL_MAT_ID` nodes on CPU, GPU at 0%.
+
+- `ggml_metal_supports_mul_mat_wide` listed F32/F16/Q5_K/Q6_K/Q8_0 and nothing
+  else. `GGML_TYPE_Q4_K` is now in it.
+- The q4_K mat-vec hardcoded the block stride at 4 in two places while the lane
+  groups double at width 64: `ib += 4` and `y4 += 4 * QK_K`. With `ix` ranging
+  0..7 but a stride of 4, each block was visited twice and half were never
+  visited — which is exactly the "MTL0 systematically larger in magnitude"
+  signature that made three earlier attempts at this look like an arithmetic
+  bug. Both strides are now `NIX = N_SIMDWIDTH/8`.
+
+The lane mapping never needed to change: `tiisg/8 == tiisg/NIX` and
+`tiisg%8 == tiisg%NIX` at both widths. Rewriting it is what broke the previous
+attempts (`0.226 -> 0.436`).
+
+Evidence: `MUL_MAT -p type_a=q4_K,type_b=f32` **123/123**,
+`MUL_MAT_ID` (q4_K) **431/431**, all types **1384/1384**. LFM2.5-8B-A1B
+UD-Q4_K_M: tg32 **6.97 -> 41.63**, pp256 **44.88 -> 86.34**; the GPU now beats
+the CPU on both axes (CPU-only 41.03 / 15.30), where before this fix decode was
+*slower* on the GPU than on the CPU.
+
 ## Reproduce
 
 Each gate is independent and takes a minute.
@@ -587,10 +687,12 @@ Measure throughput with at least 128 tokens. A 4-token reply returns `OK` at
 
 ## What is not done
 
-- **Flash attention is disabled at width 64.** Its vec kernels carry 1140
-  template instantiations sized for 32 lanes, fenced behind
-  `#if N_SIMDWIDTH == 32`. Correctness-preserving cut, not a port. Forcing
-  `-fa on` on the RX 580 changes nothing measurable.
+- **q4_0/q4_1/q5_0/q5_1 mat-vec still do not work at width 64.** They route
+  through `kernel_mul_mv_ext_q4_f32_impl`. Fixing its hardcoded `nypsg = 32/nxpsg`
+  and the host dispatch width (both now width-derived) still leaves `MUL_MAT` at
+  0/121, 0/99, 0/63 and 0/56, so the fault is deeper in that kernel's chunk and
+  `deq_t4` addressing. They stay off the wide allow-list - CPU path - rather than
+  ship a wrong result, and finding 12 documents the method that does work.
 - **Temporary instrumentation is still in the patch**: `GGML_SPLIT_DEBUG`,
   `GGML_METAL_GPU_TIME`, and the `METAL bigbuf` prints. Strip them before
   proposing anything.

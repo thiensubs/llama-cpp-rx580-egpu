@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Width-64 port: five hardcoded 32s, one derived rule",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "defect", "label": "Hardcoded for 32 lanes" },
+    { "id": "rule",   "label": "Derived from the width" },
+    { "id": "result", "label": "Verified" }
+  ],
+  "phases": [
+    { "id": "defects", "label": "Diagnose, repair, gate", "fromCol": 0, "toCol": 4, "variant": "emphasis" },
+    { "id": "proof",   "label": "Tests and model", "fromCol": 5, "toCol": 5 }
+  ],
+  "groups": [],
+  "mainPath": ["r0", "r1", "r2", "r3", "r4", "done"],
+  "nodes": [
+    { "id": "d0", "lane": "defect", "col": 0, "width": 150, "type": "security", "label": "#if N_SIMDWIDTH == 32", "sublabel": "no vec kernels", "tag": "gate" },
+    { "id": "d1", "lane": "defect", "col": 1, "width": 132, "type": "security", "label": "NE <= 32/d ladder", "sublabel": "half the head", "tag": "46/1053" },
+    { "id": "d2", "lane": "defect", "col": 2, "width": 132, "type": "security", "label": "16 / 8 / 4 literals", "sublabel": "partials dropped" },
+    { "id": "d3", "lane": "defect", "col": 3, "width": 140, "type": "security", "label": "32*nwg threads", "sublabel": "reduce read next row", "tag": "half unwritten" },
+    { "id": "d4", "lane": "defect", "col": 4, "width": 148, "type": "security", "label": "allow-list + stride 4", "sublabel": "Q4_K ran on the CPU", "tag": "1086 splits" },
+
+    { "id": "r0", "lane": "rule", "col": 0, "width": 140, "type": "backend", "label": "C = N_SIMDWIDTH", "sublabel": "score row follows width" },
+    { "id": "r1", "lane": "rule", "col": 1, "width": 128, "type": "backend", "label": "d = 1 .. NL/2", "sublabel": "folds follow NL" },
+    { "id": "r2", "lane": "rule", "col": 2, "width": 128, "type": "backend", "label": "NW/2 .. NW/32", "sublabel": "32 unchanged, 64 fixed" },
+    { "id": "r3", "lane": "rule", "col": 3, "width": 150, "type": "backend", "label": "nw threads + iwg guard", "sublabel": "neutral lanes past NWG" },
+    { "id": "r4", "lane": "rule", "col": 4, "width": 140, "type": "backend", "label": "NIX = N_SIMDWIDTH/8", "sublabel": "each block counted once", "tag": "Q4_K" },
+
+    { "id": "done", "lane": "result", "col": 5, "width": 150, "type": "cloud", "label": "One path, every width", "sublabel": "FA all kv types · Q4_K", "tag": "green" }
+  ],
+  "edges": [
+    { "from": "d0", "to": "r0", "variant": "emphasis" },
+    { "from": "d1", "to": "r1", "variant": "emphasis" },
+    { "from": "d2", "to": "r2", "variant": "emphasis" },
+    { "from": "d3", "to": "r3", "variant": "emphasis" },
+    { "from": "d4", "to": "r4", "variant": "emphasis" },
+    { "from": "r0", "to": "r1" },
+    { "from": "r1", "to": "r2" },
+    { "from": "r2", "to": "r3" },
+    { "from": "r3", "to": "r4" },
+    { "from": "r4", "to": "done", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "rose", "title": "Before / after, LFM2.5-8B-A1B on an RX 580",
+      "items": ["pp256 44.9 -> 86.5 t/s", "tg32 6.97 -> 41.3 t/s", "GPU activity 0% -> 100%", "graph splits 1086 -> 0 CPU nodes"] },
+    { "dot": "amber", "title": "Flash attention suite",
+      "items": ["46/1053 while the QK fold summed half the head", "1053/1053 with the f16 gate only", "2024/2024 once all kv types instantiate", "forced-config slice 240/240"] },
+    { "dot": "emerald", "title": "The invariant behind it all",
+      "items": ["C must equal the simdgroup width", "NL = width/NE must divide dk/4 and dv/4", "FA_VEC_NE(dk,dv) mirrors fa_vec_baseline_ne"] }
+  ]
+}

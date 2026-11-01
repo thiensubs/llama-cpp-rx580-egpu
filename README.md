@@ -123,7 +123,7 @@ tunables.
 
 ```bash
 GGML_METAL_DEVICE_NAME="Radeon RX 580" llama-server \
-  -m Ling-3.0-tiny-Q6_K.gguf -ngl 999 -lm none -t 4 -fa 0 \
+  -m Ling-3.0-tiny-Q6_K.gguf -ngl 999 -lm none -t 4 \
   -c 32768 -ub 256 -b 512 --temp 0.2 \
   --sleep-idle-seconds 1800 --metrics
 ```
@@ -131,7 +131,7 @@ GGML_METAL_DEVICE_NAME="Radeon RX 580" llama-server \
 | setting | use | measured reason |
 |---|---|---|
 | `--temp` | **0.2** | the only setting that changed correctness: at the 1.0 default, 294 s correct then 61 s wrong; at 0.2, 187 s and 59 s, both correct |
-| `-fa` | **0** | flash attention only has a kernel for batch < 20 here, so a prefill graph runs it on the CPU: one 8,222-token prompt prefills at 22.62 t/s with `-fa auto` and **57.51 t/s** with `-fa 0`. Decode loses 22% at 8k context (22.95 -> 17.87), which agent turns repay in the first prefill |
+| `-fa` | leave at the default (auto) | once the reduce buffer is sized by query rows (finding 11) FA covers prefill too: one 8,222-token prompt does **61.38 t/s** prefill and 23.40 decode, against 57.51 / 17.87 with `-fa 0`. `-fa 0` was only ever the workaround for the clamped buffer |
 | `-ub` | 256 | 128 / 256 / 512 prefill a 4,470-token prompt at 69.6 / 69.5 / 68.7 t/s. No difference, so take the one with VRAM headroom. Re-checked with `-fa 0 -t 4` at pp2048: ub 128 / 192 / 64 give 79.3 / 79.1 / 78.7 t/s - still noise, and `-t 8` is worse (77.8 prefill, 28.8 decode against 32.1) |
 | `--parallel` | leave at the default 4 | 1 slot and 4 slots prefill at 69.5 / 69.6 t/s; more slots keep more idle conversations cached, and the KV for this hybrid model is only 216 MiB |
 | `-c` | 32768 | `n_ctx` is per slot. 65536 needs 5290 MB of buffers on top of 6003 MB of weights |
@@ -653,19 +653,29 @@ Evidence: `test-backend-ops -o FLASH_ATTN_EXT` **2024/2024**, forced-config slic
 LFM2.5 in a real `pi-local` agent run: 8.1k prefill at 45.6 t/s and
 generation at 37.0 t/s with GPU at 100%, against 16.7 / 6.9 before.
 
-The gate has a sharp edge, and it is worth knowing before enabling it. The vec
-kernels cover `ne01 < 20` only - decode. A prefill graph has no flash-attention
-kernel at all, so with FA enabled the op is placed on the CPU and prefill
-collapses. One 8,222-token prompt on Ling-3.0-tiny, same binary:
+The gate has a sharp edge that cost this fork a 2.5x prefill regression, and the
+cause was not the kernel. `use_vec` refuses prefill batches (`ne01 < 20`), so with
+FA enabled a prefill graph had no kernel and the op landed on the CPU: 22.62 t/s
+prefill against 57.51 with `-fa 0`. Lifting the batch limit alone does not fix
+it - it turns 2024 passing cases into 1171 failures. The bug was one clamp:
+
+```cpp
+// ggml_metal_op_flash_attn_ext_extra_tmp
+const int64_t ne01_max = std::min(ne01, 32);   // reserved 32 rows
+// while the vec path writes one partial per query row for all ne01
+```
+
+Size that buffer by `ne01` and the whole picture changes. One 8,222-token prompt
+on Ling-3.0-tiny, same binary:
 
 | | prefill | decode |
 |---|---|---|
-| `-fa auto` | 22.62 t/s | 22.95 t/s |
-| `-fa 0` | **57.51 t/s** | 17.87 t/s |
+| `-fa auto`, clamped buffer (before) | 22.62 t/s | 22.95 t/s |
+| `-fa 0` (the workaround) | 57.51 t/s | 17.87 t/s |
+| **`-fa auto`, sized buffer (now)** | **61.38 t/s** | **23.40 t/s** |
 
-**For agent work, pass `-fa 0`.** Prefill is 2.5x faster and an agent turn is
-prefill-dominated; the 22% decode loss only shows up on long answers at 8k+
-context. The launchers in `agents/` do this through an explicit `ULTRA` profile.
+FA on now wins both phases, `FLASH_ATTN_EXT` is **4116/4116** including the
+prefill batches (`nb=75`: 1018/1018), and `-fa 0` is no longer needed anywhere.
 
 ### 12. The wide mat-vec allow-list excluded Q4_K, and its block stride was 4
 
@@ -721,12 +731,6 @@ Measure throughput with at least 128 tokens. A 4-token reply returns `OK` at
 
 ## What is not done
 
-- **Flash attention cannot cover prefill batches, and lifting the limit is not cosmetic.**
-  `use_vec` requires `ne01 < 20`, so a prefill graph has no FA kernel at all and the op lands
-  on the CPU - that is why `-fa 0` wins on this device (finding 11). Removing the limit and
-  running the suite: **1171 of 4116 FLASH_ATTN_EXT cases fail**, 1018 of them at `nb=75`. The
-  kernel is not correct beyond small batches, so this needs real kernel work, not a predicate
-  change - and it is the one change that would give Ling fast prefill *with* FA on.
 - **`q4_0`/`q4_1`/`q5_0`/`q5_1` mat-vec still do not work at width 64.** They route
   through `kernel_mul_mv_ext_q4_f32_impl`. Fixing its hardcoded `nypsg = 32/nxpsg`
   and the host dispatch width (both now width-derived) still leaves `MUL_MAT` at

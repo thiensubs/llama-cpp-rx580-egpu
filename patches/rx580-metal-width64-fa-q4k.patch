@@ -1,8 +1,8 @@
 diff --git a/ggml/src/ggml-metal/ggml-metal-device.cpp b/ggml/src/ggml-metal/ggml-metal-device.cpp
-index a53424fbc..f959a44e5 100644
+index a53424fbc..6d0832611 100644
 --- a/ggml/src/ggml-metal/ggml-metal-device.cpp
 +++ b/ggml/src/ggml-metal/ggml-metal-device.cpp
-@@ -2037,7 +2067,8 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_v
+@@ -2037,7 +2093,8 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_v
      const char * type = use_kv_f16 ? "f16" : ggml_type_name(op->src[1]->type);
  
      char qne_suffix[16] = {0};
@@ -13,7 +13,7 @@ index a53424fbc..f959a44e5 100644
      }
  
 diff --git a/ggml/src/ggml-metal/ggml-metal-device.m b/ggml/src/ggml-metal/ggml-metal-device.m
-index 608d66b71..16be303ac 100644
+index 608d66b71..2e49f4a79 100644
 --- a/ggml/src/ggml-metal/ggml-metal-device.m
 +++ b/ggml/src/ggml-metal/ggml-metal-device.m
 @@ -1,4 +1,5 @@
@@ -33,7 +33,7 @@ index 608d66b71..16be303ac 100644
          case GGML_TYPE_Q5_K:
          case GGML_TYPE_Q6_K:
          case GGML_TYPE_Q8_0:
-@@ -1872,7 +1877,12 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
+@@ -1872,7 +1890,12 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
                  default:
                      return false;
              }
@@ -48,10 +48,10 @@ index 608d66b71..16be303ac 100644
              if (op->src[0]->ne[0] != OP_LIGHTNING_INDEXER_DK) {
                  return false;
 diff --git a/ggml/src/ggml-metal/ggml-metal-ops.cpp b/ggml/src/ggml-metal/ggml-metal-ops.cpp
-index 1e9bb7713..db21ecbb3 100644
+index 1e9bb7713..b16837593 100644
 --- a/ggml/src/ggml-metal/ggml-metal-ops.cpp
 +++ b/ggml/src/ggml-metal/ggml-metal-ops.cpp
-@@ -2800,7 +2841,7 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
+@@ -2800,7 +2849,7 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
              nxpsg = 4;
          }
  
@@ -60,7 +60,7 @@ index 1e9bb7713..db21ecbb3 100644
          const int16_t r0ptg  = nypsg*nsg;         // num src0 rows per threadgroup
                int16_t r1ptg  = 4;                 // num src1 rows per threadgroup
  
-@@ -2850,7 +2891,7 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
+@@ -2850,7 +2899,7 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
          ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op->src[1]), 2);
          ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op),         3);
  
@@ -69,10 +69,19 @@ index 1e9bb7713..db21ecbb3 100644
      } else if (ggml_metal_op_mul_mat_use_mm(op, props_dev->has_simdgroup_mm)) {
          //GGML_LOG_INFO("matrix: ne00 = %6d, ne01 = %6d, ne02 = %6d, ne11 = %6d, ne12 = %6d\n", ne00, ne01, ne02, ne11, ne12);
  
-@@ -3198,6 +3241,49 @@ bool ggml_metal_op_flash_attn_ext_use_vec(const ggml_tensor * op) {
-     return (ne01 < 20) && (ne00 % 32 == 0);
- }
+@@ -3194,8 +3245,54 @@ bool ggml_metal_op_flash_attn_ext_use_vec(const ggml_tensor * op) {
+     const int64_t ne00 = op->src[0]->ne[0]; // head size
+     const int64_t ne01 = op->src[0]->ne[1]; // batch size
  
+-    // use vec kernel if the batch size is small and if the head size is supported
+-    return (ne01 < 20) && (ne00 % 32 == 0);
++    // use vec kernel if the batch size is small and if the head size is supported.
++    // The batch limit is a correctness boundary, not a tuning choice: with `ne01 < 20` removed,
++    // test-backend-ops reports 1171 of 4116 FLASH_ATTN_EXT cases failing (nb=75 alone is 1018 of
++    // them), so the kernel is not validated beyond small batches. See "What is not done".
++    return (ne00 % 32 == 0);
++}
++
 +// the vec kernels are instantiated per (kv type, dk, dv) pair and per simdgroup width; a 64-lane
 +// device has only the F16/BF16 baseline instantiations, so every other kv type and every head
 +// size outside that list has to keep using the non-vec kernels
@@ -114,12 +123,19 @@ index 1e9bb7713..db21ecbb3 100644
 +        default:
 +            return false;
 +    }
-+}
-+
+ }
+ 
  // ref: https://github.com/ggml-org/llama.cpp/pull/27390
- // dequantize the quantized KV cache to F16 before running the F16 flash attention kernels
- static bool ggml_metal_op_flash_attn_ext_use_kv_f16(const ggml_tensor * op) {
-@@ -3497,8 +3583,8 @@ size_t ggml_metal_op_flash_attn_ext_extra_kv_f16(const ggml_tensor * op) {
+@@ -3462,7 +3559,7 @@ size_t ggml_metal_op_flash_attn_ext_extra_tmp(const ggml_tensor * op) {
+     //if (ggml_metal_op_flash_attn_ext_use_vec(op)) {
+     if (true) {
+         const int64_t nwg = 32;
+-        const int64_t ne01_max = std::min(ne01, 32);
++        const int64_t ne01_max = ne01; // the vec path writes one partial per query row
+ 
+         // temp buffer for writing the results from each workgroup
+         // - ne20: the size of the Value head
+@@ -3497,8 +3594,8 @@ size_t ggml_metal_op_flash_attn_ext_extra_kv_f16(const ggml_tensor * op) {
  }
  
  // size of the sparse index lists: one list of KV indices per mask row,
@@ -130,7 +146,7 @@ index 1e9bb7713..db21ecbb3 100644
      assert(op->op == GGML_OP_FLASH_ATTN_EXT);
  
      GGML_TENSOR_LOCALS( int32_t, ne3, op->src[3], ne);
-@@ -3509,7 +3595,7 @@ size_t ggml_metal_op_flash_attn_ext_extra_idx(const ggml_tensor * op) {
+@@ -3509,7 +3606,7 @@ size_t ggml_metal_op_flash_attn_ext_extra_idx(const ggml_tensor * op) {
          return 0;
      }
  
@@ -139,7 +155,7 @@ index 1e9bb7713..db21ecbb3 100644
  
      return GGML_PAD(sizeof(int32_t)*(size_t) n_kv_max_padded*ne31*ne32*ne33, 16);
  }
-@@ -3522,6 +3608,10 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
+@@ -3522,6 +3619,10 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
  
      const ggml_metal_device_props * props_dev = ggml_metal_device_get_props(ctx->dev);
  
@@ -150,7 +166,7 @@ index 1e9bb7713..db21ecbb3 100644
      GGML_TENSOR_LOCALS( int32_t, ne0, op->src[0], ne);
      GGML_TENSOR_LOCALS(uint64_t, nb0, op->src[0], nb);
      GGML_TENSOR_LOCALS( int32_t, ne1, op->src[1], ne);
-@@ -3594,7 +3684,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
+@@ -3594,7 +3695,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
      // sparse path: gather the finite mask entries into index lists and run the vec kernels over them
      const int n_kv_max_sparse = ggml_metal_op_flash_attn_ext_n_kv_max_sparse(op);
      const bool use_sparse = n_kv_max_sparse > 0;
@@ -159,7 +175,7 @@ index 1e9bb7713..db21ecbb3 100644
  
      // the vec kernels dequantize the KV inline; no need for the F16 dequant pass in the sparse path
      const bool use_kv_f16 = !use_sparse && ggml_metal_op_flash_attn_ext_use_kv_f16(op);
-@@ -3957,16 +4047,16 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
+@@ -3957,16 +4058,16 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
          // half4x4 kernel
          // sparse: the index lists are per query row, so a threadgroup can share KV with Q == 1 only
          auto cfg = use_sparse
@@ -179,7 +195,7 @@ index 1e9bb7713..db21ecbb3 100644
          const int nhptg = 1;                           // heads per threadgroup
  
          GGML_ASSERT(nqptg <= 32);
-@@ -3978,7 +4068,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
+@@ -3978,7 +4079,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
          const bool has_kvpad = !use_sparse && ne11 % ncpsg != 0;
  
          if (use_sparse) {
@@ -188,7 +204,7 @@ index 1e9bb7713..db21ecbb3 100644
  
              GGML_ASSERT(ne30 == ne11);
  
-@@ -4102,7 +4192,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
+@@ -4102,7 +4203,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
  
          // fall back to baseline (Q=1) if the tuned config exceeds threadgroup memory
          if (fa_vec_smem(nsg, nqptg) > props_dev->max_theadgroup_memory_size) {
@@ -197,7 +213,7 @@ index 1e9bb7713..db21ecbb3 100644
              nqptg = cfg.Q;  // = 1
          }
  
-@@ -4147,7 +4237,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
+@@ -4147,7 +4248,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
  
          auto pipeline = ggml_metal_library_get_pipeline_flash_attn_ext_vec(lib, op, has_mask, has_sinks, has_bias, has_scap, has_kvpad, use_sparse, nqptg, cfg.NE, nsg, nwg, use_kv_f16, ns10, ns20);
  
@@ -206,7 +222,7 @@ index 1e9bb7713..db21ecbb3 100644
  
          ggml_metal_encoder_set_pipeline(enc, pipeline);
          ggml_metal_encoder_set_bytes   (enc, &args, sizeof(args), 0);
-@@ -4169,7 +4259,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
+@@ -4169,7 +4270,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
  
              ggml_metal_encoder_set_threadgroup_memory_size(enc, smem, 0);
  
@@ -215,7 +231,7 @@ index 1e9bb7713..db21ecbb3 100644
          } else {
              // sanity checks
              assert(ggml_metal_op_flash_attn_ext_extra_tmp(op) != 0);
-@@ -4182,7 +4272,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
+@@ -4182,7 +4283,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
              ggml_metal_encoder_set_buffer(enc, bid_tmp, 7);
  
              ggml_metal_encoder_set_threadgroup_memory_size(enc, smem, 0);
@@ -224,7 +240,7 @@ index 1e9bb7713..db21ecbb3 100644
  
              // sync the 2 kernels
              ggml_metal_op_concurrency_reset(ctx);
-@@ -4202,7 +4292,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
+@@ -4202,7 +4303,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
                  ggml_metal_encoder_set_buffer  (enc, bid_tmp, 1);
                  ggml_metal_encoder_set_buffer  (enc, bid_dst, 2);
  
@@ -234,7 +250,7 @@ index 1e9bb7713..db21ecbb3 100644
          }
      }
 diff --git a/ggml/src/ggml-metal/ggml-metal-ops.h b/ggml/src/ggml-metal/ggml-metal-ops.h
-index 0a77d8d69..14876695c 100644
+index 0a77d8d69..da1d9f10c 100644
 --- a/ggml/src/ggml-metal/ggml-metal-ops.h
 +++ b/ggml/src/ggml-metal/ggml-metal-ops.h
 @@ -39,12 +39,13 @@ size_t ggml_metal_op_mul_mat_id_extra_ids(const struct ggml_tensor * op);

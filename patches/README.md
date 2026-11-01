@@ -33,10 +33,16 @@ fresh `a7af149` tree and built from scratch with
 
 ```
 build                                         0 errors
-test-backend-ops -o FLASH_ATTN_EXT            2024/2024 passed
+test-backend-ops -o FLASH_ATTN_EXT            4116/4116 passed
 test-backend-ops  (forced (Q,NE) slice)        240/240 passed
 test-backend-ops -o MUL_MAT,MUL_MAT_ID        1384/1384 passed
 ```
+
+The flash-attention count is 4116, not 2024, because this patch also lets the vec
+kernel serve prefill batches: `use_vec` no longer refuses `ne01 >= 20`, and the
+reduce temp buffer in `ggml_metal_op_flash_attn_ext_extra_tmp` is sized by query
+rows instead of being clamped to 32. On Ling-3.0-tiny that turns 22.62 t/s of
+prefill into 61.38 (decode 23.40), measured on one 8,222-token prompt.
 
 The second patch touches 17 files: the eight `kernels/fa_vec_*.metal`, `fa_aux.metal`,
 `mul_mv.metal`, `ggml-metal-tuning.h/.cpp`, `ggml-metal-ops.h/.cpp`,

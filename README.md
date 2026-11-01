@@ -721,6 +721,12 @@ Measure throughput with at least 128 tokens. A 4-token reply returns `OK` at
 
 ## What is not done
 
+- **Flash attention cannot cover prefill batches, and lifting the limit is not cosmetic.**
+  `use_vec` requires `ne01 < 20`, so a prefill graph has no FA kernel at all and the op lands
+  on the CPU - that is why `-fa 0` wins on this device (finding 11). Removing the limit and
+  running the suite: **1171 of 4116 FLASH_ATTN_EXT cases fail**, 1018 of them at `nb=75`. The
+  kernel is not correct beyond small batches, so this needs real kernel work, not a predicate
+  change - and it is the one change that would give Ling fast prefill *with* FA on.
 - **`q4_0`/`q4_1`/`q5_0`/`q5_1` mat-vec still do not work at width 64.** They route
   through `kernel_mul_mv_ext_q4_f32_impl`. Fixing its hardcoded `nypsg = 32/nxpsg`
   and the host dispatch width (both now width-derived) still leaves `MUL_MAT` at

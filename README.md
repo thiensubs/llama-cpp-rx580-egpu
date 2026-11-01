@@ -132,7 +132,7 @@ GGML_METAL_DEVICE_NAME="Radeon RX 580" llama-server \
 |---|---|---|
 | `--temp` | **0.2** | the only setting that changed correctness: at the 1.0 default, 294 s correct then 61 s wrong; at 0.2, 187 s and 59 s, both correct |
 | `-fa` | **0** | flash attention only has a kernel for batch < 20 here, so a prefill graph runs it on the CPU: one 8,222-token prompt prefills at 22.62 t/s with `-fa auto` and **57.51 t/s** with `-fa 0`. Decode loses 22% at 8k context (22.95 -> 17.87), which agent turns repay in the first prefill |
-| `-ub` | 256 | 128 / 256 / 512 prefill a 4,470-token prompt at 69.6 / 69.5 / 68.7 t/s. No difference, so take the one with VRAM headroom |
+| `-ub` | 256 | 128 / 256 / 512 prefill a 4,470-token prompt at 69.6 / 69.5 / 68.7 t/s. No difference, so take the one with VRAM headroom. Re-checked with `-fa 0 -t 4` at pp2048: ub 128 / 192 / 64 give 79.3 / 79.1 / 78.7 t/s - still noise, and `-t 8` is worse (77.8 prefill, 28.8 decode against 32.1) |
 | `--parallel` | leave at the default 4 | 1 slot and 4 slots prefill at 69.5 / 69.6 t/s; more slots keep more idle conversations cached, and the KV for this hybrid model is only 216 MiB |
 | `-c` | 32768 | `n_ctx` is per slot. 65536 needs 5290 MB of buffers on top of 6003 MB of weights |
 | `--sleep-idle-seconds` | 1800 while working, 300 to save RAM | sleeping frees 5.6 GB but drops the prompt cache, and re-prefilling a 15k agent prompt costs about 3.6 min |

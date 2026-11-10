@@ -3,8 +3,11 @@
 A MacBook Pro with an AMD card in a Thunderbolt enclosure, driven at width 64 by
 a backend that assumed 32. Twelve findings, every number measured on that
 machine, shipped as two patches that build and pass their gates from a clean
-checkout ([patches/](patches/README.md)). Nothing was hardware-hacked and nothing
-was submitted upstream.
+checkout ([patches/](patches/README.md)). Nothing was hardware-hacked and 2 things
+was submitted upstream via MR contribute:
+
+- metal: simdgroup-width-aware kernels for AMD eGPUs (wave64) -[#31994⁠](https://github.com/ggml-org/llama.cpp/pull/31994/)
+- mtmd: propagate clip compute-buffer reserve failure - [#31988](https://github.com/ggml-org/llama.cpp/pull/31988)
 
 ![Two models, one agent task: timeline, throughput and memory on an RX 580 eGPU](assets/memory-compare.png)
 
